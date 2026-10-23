@@ -1,0 +1,27 @@
+# .NET / Visual Studio
+.vs/
+**/bin/
+**/obj/
+**/*.csproj.user
+*.user
+
+# Angular / Node
+node_modules/
+.angular/
+dist/
+coverage/
+
+# Configuración y datos locales
+.env
+.env.*
+!.env.example
+**/appsettings.Local.json
+*.mdf
+*.ldf
+*.bak
+
+# Sistema y editores
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/

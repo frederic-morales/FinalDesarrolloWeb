@@ -1,0 +1,116 @@
+<div class="app-layout">
+  <aside class="sidebar">
+    <a class="sidebar-brand" routerLink="/resumen"><span class="brand-symbol">CP<span>·</span></span><span><strong>Cuentas por pagar</strong><small>Panel de control</small></span></a>
+    <p class="nav-caption">ESPACIO DE TRABAJO</p>
+    <nav aria-label="Menú principal">
+      @for (item of nav; track item.key) {
+        <a class="nav-link" [routerLink]="'/' + item.key" routerLinkActive="active"><span class="nav-icon">{{ item.icon }}</span>{{ item.label }}</a>
+      }
+    </nav>
+    <div class="sidebar-bottom"><span class="avatar">{{ auth.user()?.userName?.slice(0, 2)?.toUpperCase() }}</span><span class="account"><strong>{{ auth.user()?.userName }}</strong><small>{{ auth.isAdmin() ? 'Administrador' : 'Operador' }}</small></span><button class="icon-button" title="Cerrar sesión" aria-label="Cerrar sesión" (click)="auth.logout()">↪</button></div>
+  </aside>
+  <div class="main-column">
+    <header class="topbar"><span>CUENTAS POR PAGAR <span class="breadcrumb-slash">/</span> {{ section === 'configuracion' ? 'CONFIGURACIÓN' : section.toUpperCase() }}</span><span class="topbar-date">{{ reportAsOf }} · GTQ</span></header>
+    <main class="content">
+      @if (error) { <div class="alert alert-error" role="alert">{{ error }} <button (click)="error = ''" aria-label="Cerrar aviso">×</button></div> }
+      @if (notice) { <div class="alert alert-success" role="status">{{ notice }} <button (click)="notice = ''" aria-label="Cerrar aviso">×</button></div> }
+
+      @if (section === 'resumen') {
+        <div class="page-heading"><div><p class="eyebrow">VISTA GENERAL</p><h1>Resumen financiero</h1><p class="muted">Una vista clara de tus obligaciones pendientes.</p></div><a class="button button-primary" routerLink="/facturas">Ver facturas <span>→</span></a></div>
+        @if (dashboard) {
+          <div class="metrics">
+            <article class="metric metric-featured"><div class="metric-top"><span>Saldo pendiente</span><span class="metric-icon">↗</span></div><strong>{{ money(dashboard.totalOutstanding) }}</strong><small>En facturas activas</small></article>
+            <article class="metric"><div class="metric-top"><span>Facturas pendientes</span><span class="metric-icon">▧</span></div><strong>{{ dashboard.pendingInvoices }}</strong><small>Por pagar</small></article>
+            <article class="metric"><div class="metric-top"><span>Vencidas</span><span class="metric-icon warn">!</span></div><strong>{{ dashboard.overdueInvoices }}</strong><small>{{ money(dashboard.totalOverdue) }} vencidos</small></article>
+            <article class="metric"><div class="metric-top"><span>Proveedores activos</span><span class="metric-icon">▤</span></div><strong>{{ dashboard.activeSuppliers }}</strong><small>En el catálogo</small></article>
+          </div>
+        }
+        <div class="card"><div class="card-heading"><div><p class="eyebrow">PRÓXIMOS COMPROMISOS</p><h2>Facturas por pagar</h2></div><a class="text-link" routerLink="/reportes">Ver reporte completo →</a></div>
+          <div class="table-wrap"><table><thead><tr><th>Factura</th><th>Proveedor</th><th>Vencimiento</th><th>Estado</th><th class="right">Saldo</th></tr></thead><tbody>
+            @for (i of topPayables; track i.id) { <tr><td><strong>{{ i.series }}-{{ i.number }}</strong></td><td>{{ i.supplierName }}</td><td>{{ i.dueDate }}</td><td><span class="badge" [class.badge-danger]="i.isOverdue">{{ i.isOverdue ? 'Vencida' : 'Pendiente' }}</span></td><td class="right amount">{{ money(i.balance) }}</td></tr> }
+            @empty { <tr><td colspan="5" class="empty">No hay facturas pendientes.</td></tr> }
+          </tbody></table></div>
+        </div>
+      }
+
+      @if (section === 'proveedores') {
+        <div class="page-heading"><div><p class="eyebrow">DIRECTORIO</p><h1>Proveedores</h1><p class="muted">Mantén actualizados los datos de tus proveedores.</p></div><button class="button button-primary" (click)="newSupplier()">+ Nuevo proveedor</button></div>
+        @if (showSupplierForm) { <div class="card form-card"><div class="card-heading"><h2>{{ editingSupplierId ? 'Editar proveedor' : 'Nuevo proveedor' }}</h2><button class="icon-button" (click)="showSupplierForm = false">×</button></div><div class="form-grid">
+          <label class="span-2">Nombre * <input [(ngModel)]="supplierForm.name" maxlength="200" placeholder="Razón social o nombre comercial" /></label>
+          <label>NIT <input [(ngModel)]="supplierForm.nit" maxlength="30" placeholder="Número de identificación tributaria" /></label>
+          <label>Contacto <input [(ngModel)]="supplierForm.contactName" maxlength="150" placeholder="Nombre de contacto" /></label>
+          <label>Correo <input [(ngModel)]="supplierForm.email" type="email" maxlength="200" placeholder="correo@empresa.com" /></label>
+          <label>Teléfono <input [(ngModel)]="supplierForm.phone" maxlength="40" placeholder="Número de teléfono" /></label>
+          <label class="span-2">Dirección <input [(ngModel)]="supplierForm.address" maxlength="400" placeholder="Dirección" /></label>
+        </div><div class="form-actions"><button class="button button-quiet" (click)="showSupplierForm = false">Cancelar</button><button class="button button-primary" [disabled]="busy" (click)="saveSupplier()">Guardar proveedor</button></div></div> }
+        <div class="card"><div class="card-heading"><div><h2>Directorio</h2><p class="muted">{{ visibleSuppliers.length }} proveedores</p></div><input class="search-input" [(ngModel)]="supplierSearch" placeholder="Buscar por nombre o NIT" aria-label="Buscar proveedores" /></div>
+          <div class="table-wrap"><table><thead><tr><th>Proveedor</th><th>NIT</th><th>Contacto</th><th>Estado</th><th class="right">Acciones</th></tr></thead><tbody>
+            @for (s of visibleSuppliers; track s.id) { <tr><td><strong>{{ s.name }}</strong><small class="cell-sub">{{ s.email || 'Sin correo' }}</small></td><td>{{ s.nit || '—' }}</td><td>{{ s.contactName || '—' }}<small class="cell-sub">{{ s.phone }}</small></td><td><span class="badge" [class.badge-muted]="!s.isActive">{{ s.isActive ? 'Activo' : 'Inactivo' }}</span></td><td class="right actions"><button class="text-link" (click)="editSupplier(s)">Editar</button>@if (auth.isAdmin()) { <button class="text-link" (click)="toggleSupplier(s)">{{ s.isActive ? 'Desactivar' : 'Activar' }}</button> }</td></tr> }
+            @empty { <tr><td colspan="5" class="empty">No se encontraron proveedores.</td></tr> }
+          </tbody></table></div>
+        </div>
+      }
+
+      @if (section === 'facturas') {
+        <div class="page-heading"><div><p class="eyebrow">COMPRAS</p><h1>Facturas</h1><p class="muted">Registra cada compra y conoce lo que queda por pagar.</p></div><button class="button button-primary" (click)="newInvoice()">+ Nueva factura</button></div>
+        @if (showInvoiceForm) { <div class="card form-card"><div class="card-heading"><h2>{{ editingInvoiceId ? 'Editar factura' : 'Registrar factura' }}</h2><button class="icon-button" (click)="showInvoiceForm = false">×</button></div><div class="form-grid">
+          <label class="span-2">Proveedor * <select [(ngModel)]="invoiceForm.supplierId"><option [ngValue]="0">Selecciona un proveedor</option>@for (s of suppliers; track s.id) { @if (s.isActive || s.id === invoiceForm.supplierId) { <option [ngValue]="s.id">{{ s.name }}</option> } }</select></label>
+          <label>Serie * <input [(ngModel)]="invoiceForm.series" maxlength="30" placeholder="A" /></label><label>Número * <input [(ngModel)]="invoiceForm.number" maxlength="50" placeholder="001234" /></label>
+          <label>Fecha de emisión * <input [(ngModel)]="invoiceForm.issueDate" type="date" /></label><label>Fecha de vencimiento * <input [(ngModel)]="invoiceForm.dueDate" type="date" /></label>
+        </div><div class="lines-head"><h3>Detalle de compra</h3><button class="text-link" (click)="addLine()">+ Agregar línea</button></div>
+          @for (line of invoiceForm.lines; track $index; let index = $index) { <div class="line-row"><label>Descripción <input [(ngModel)]="line.description" maxlength="300" placeholder="Producto o servicio" /></label><label>Cantidad <input [(ngModel)]="line.quantity" type="number" min="0.001" step="0.001" /></label><label>Precio unitario <input [(ngModel)]="line.unitPrice" type="number" min="0" step="0.01" /></label><strong>{{ money(line.quantity * line.unitPrice) }}</strong><button class="icon-button" aria-label="Eliminar línea" [disabled]="invoiceForm.lines.length === 1" (click)="removeLine(index)">×</button></div> }
+          <div class="total-line"><span>Total factura</span><strong>{{ money(invoiceTotal) }}</strong></div><div class="form-actions"><button class="button button-quiet" (click)="showInvoiceForm = false">Cancelar</button><button class="button button-primary" [disabled]="busy" (click)="saveInvoice()">Guardar factura</button></div></div> }
+        <div class="card"><div class="card-heading"><h2>Historial de facturas</h2><span class="muted">{{ invoices.length }} registros</span></div><div class="table-wrap"><table><thead><tr><th>Factura</th><th>Proveedor</th><th>Emisión</th><th>Vence</th><th class="right">Total</th><th class="right">Saldo</th><th>Estado</th><th class="right">Acciones</th></tr></thead><tbody>
+          @for (i of invoices; track i.id) { <tr><td><strong>{{ i.series }}-{{ i.number }}</strong></td><td>{{ i.supplierName }}</td><td>{{ i.issueDate }}</td><td>{{ i.dueDate }}</td><td class="right amount">{{ money(i.total) }}</td><td class="right amount">{{ money(i.balance) }}</td><td><span class="badge" [class.badge-muted]="i.status === 'Cancelled'" [class.badge-danger]="i.isOverdue && i.status === 'Active'">{{ i.status === 'Cancelled' ? 'Anulada' : i.balance === 0 ? 'Pagada' : i.isOverdue ? 'Vencida' : 'Pendiente' }}</span></td><td class="right actions">@if (i.status === 'Active') { <button class="text-link" (click)="editInvoice(i)">Editar</button><button class="text-link danger-link" (click)="cancelInvoice(i)">Anular</button> }</td></tr> }
+          @empty { <tr><td colspan="8" class="empty">Todavía no hay facturas.</td></tr> }
+        </tbody></table></div></div>
+      }
+
+      @if (section === 'pagos') {
+        <div class="page-heading"><div><p class="eyebrow">MOVIMIENTOS</p><h1>Pagos</h1><p class="muted">Aplica abonos a una o varias facturas de un proveedor.</p></div><button class="button button-primary" (click)="newPayment()">+ Registrar pago</button></div>
+        @if (showPaymentForm) { <div class="card form-card"><div class="card-heading"><h2>Nuevo pago</h2><button class="icon-button" (click)="showPaymentForm = false">×</button></div><div class="form-grid">
+          <label class="span-2">Proveedor * <select [(ngModel)]="paymentForm.supplierId" (ngModelChange)="allocations = {}"><option [ngValue]="0">Selecciona un proveedor</option>@for (s of suppliers; track s.id) { @if (s.isActive) { <option [ngValue]="s.id">{{ s.name }}</option> } }</select></label>
+          <label>Método de pago * <select [(ngModel)]="paymentForm.paymentMethodId"><option [ngValue]="0">Selecciona un método</option>@for (m of methods; track m.id) { @if (m.isActive) { <option [ngValue]="m.id">{{ m.name }}</option> } }</select></label>
+          <label>Fecha * <input type="date" [(ngModel)]="paymentForm.date" (ngModelChange)="allocations = {}" /></label>
+          <label class="span-2">Referencia <input [(ngModel)]="paymentForm.reference" maxlength="100" placeholder="Cheque, transferencia o comprobante" /></label>
+        </div><div class="lines-head"><h3>Facturas a pagar</h3><span class="muted">Escribe el abono para cada factura</span></div>
+          @if (payableInvoices.length) { <div class="table-wrap"><table><thead><tr><th>Factura</th><th>Vence</th><th class="right">Saldo</th><th>Abono (GTQ)</th></tr></thead><tbody>
+            @for (i of payableInvoices; track i.id) { <tr><td><strong>{{ i.series }}-{{ i.number }}</strong></td><td>{{ i.dueDate }}</td><td class="right amount">{{ money(i.balance) }}</td><td><input class="amount-input" type="number" min="0" [max]="i.balance" step="0.01" [(ngModel)]="allocations[i.id]" placeholder="0.00" /></td></tr> }
+          </tbody></table></div> } @else { <p class="empty">Selecciona un proveedor con facturas pendientes.</p> }
+          <div class="total-line"><span>Total a pagar</span><strong>{{ money(paymentTotal) }}</strong></div><div class="form-actions"><button class="button button-quiet" (click)="showPaymentForm = false">Cancelar</button><button class="button button-primary" [disabled]="busy" (click)="savePayment()">Registrar pago</button></div></div> }
+        @if (selectedPayment) { <div class="card detail-card"><div class="card-heading"><h2>Pago #{{ selectedPayment.id }}</h2><button class="icon-button" (click)="selectedPayment = null">×</button></div><p>{{ selectedPayment.supplierName }} · {{ selectedPayment.date }} · {{ selectedPayment.paymentMethodName }}</p><p class="muted">Referencia: {{ selectedPayment.reference || 'Sin referencia' }}</p><div class="table-wrap"><table><thead><tr><th>Factura</th><th class="right">Abono</th></tr></thead><tbody>@for (a of selectedPayment.allocations; track a.invoiceId) { <tr><td>{{ a.invoiceNumber }}</td><td class="right amount">{{ money(a.amount) }}</td></tr> }</tbody></table></div></div> }
+        <div class="card"><div class="card-heading"><h2>Movimientos recientes</h2><span class="muted">{{ payments.length }} pagos</span></div><div class="table-wrap"><table><thead><tr><th>Pago</th><th>Proveedor</th><th>Fecha</th><th>Método</th><th>Referencia</th><th class="right">Importe</th><th>Estado</th><th class="right">Acciones</th></tr></thead><tbody>
+          @for (p of payments; track p.id) { <tr><td><strong>#{{ p.id }}</strong></td><td>{{ p.supplierName }}</td><td>{{ p.date }}</td><td>{{ p.paymentMethodName }}</td><td>{{ p.reference || '—' }}</td><td class="right amount">{{ money(p.amount) }}</td><td><span class="badge" [class.badge-muted]="p.status === 'Cancelled'">{{ p.status === 'Cancelled' ? 'Anulado' : 'Aplicado' }}</span></td><td class="right actions"><button class="text-link" (click)="viewPayment(p)">Detalle</button>@if (auth.isAdmin() && p.status === 'Active') { <button class="text-link danger-link" (click)="cancelPayment(p)">Anular</button> }</td></tr> }
+          @empty { <tr><td colspan="8" class="empty">Todavía no hay pagos.</td></tr> }
+        </tbody></table></div></div>
+      }
+
+      @if (section === 'reportes') {
+        <div class="page-heading"><div><p class="eyebrow">ANÁLISIS</p><h1>Reportes</h1><p class="muted">Consulta saldos y movimientos por proveedor.</p></div></div>
+        <div class="card"><div class="card-heading"><div><h2>Cuentas por pagar</h2><p class="muted">Saldos vigentes a una fecha de corte.</p></div></div><div class="filters"><label>Fecha de corte <input type="date" [(ngModel)]="reportAsOf" /></label><label>Proveedor <select [(ngModel)]="reportSupplierId" (ngModelChange)="statement = null"><option [ngValue]="0">Todos</option>@for (s of suppliers; track s.id) { <option [ngValue]="s.id">{{ s.name }}</option> }</select></label><label class="check"><input type="checkbox" [(ngModel)]="reportOverdueOnly" /> Solo vencidas</label><button class="button button-secondary" (click)="searchPayables()">Consultar</button></div>
+          <div class="table-wrap"><table><thead><tr><th>Factura</th><th>Proveedor</th><th>Vence</th><th class="right">Total</th><th class="right">Abonado</th><th class="right">Saldo</th></tr></thead><tbody>
+            @for (i of payableRows; track i.id) { <tr><td><strong>{{ i.series }}-{{ i.number }}</strong></td><td>{{ i.supplierName }}</td><td>{{ i.dueDate }}</td><td class="right amount">{{ money(i.total) }}</td><td class="right amount">{{ money(i.paid) }}</td><td class="right amount">{{ money(i.balance) }}</td></tr> }
+            @empty { <tr><td colspan="6" class="empty">No hay saldos para estos filtros.</td></tr> }
+          </tbody></table></div><div class="report-total"><span>{{ payableRows.length }} facturas</span><strong>Total pendiente: {{ money(payableTotal) }}</strong></div>
+        </div>
+        <div class="card"><div class="card-heading"><div><h2>Estado de cuenta</h2><p class="muted">Selecciona un proveedor y un período para ver sus movimientos.</p></div>@if (statement) { <button class="button button-secondary" (click)="downloadStatement()">Descargar CSV ↓</button> }</div><div class="filters"><label>Desde <input type="date" [(ngModel)]="statementFrom" /></label><label>Hasta <input type="date" [(ngModel)]="statementTo" /></label><button class="button button-secondary" (click)="loadStatement()">Ver estado</button></div>
+          @if (statement) { <div class="statement-summary"><div><span>Proveedor</span><strong>{{ statement.supplierName }}</strong></div><div><span>Saldo inicial</span><strong>{{ money(statement.openingBalance) }}</strong></div><div><span>Saldo final</span><strong>{{ money(statement.closingBalance) }}</strong></div></div><div class="table-wrap"><table><thead><tr><th>Fecha</th><th>Tipo</th><th>Descripción</th><th class="right">Cargo</th><th class="right">Abono</th><th class="right">Saldo</th></tr></thead><tbody>
+            @for (m of statement.movements; track m.type + m.documentId) { <tr><td>{{ m.date }}</td><td>{{ m.type }}</td><td>{{ m.description }}</td><td class="right amount">{{ money(m.charge) }}</td><td class="right amount">{{ money(m.credit) }}</td><td class="right amount">{{ money(m.runningBalance) }}</td></tr> }
+            @empty { <tr><td colspan="6" class="empty">Sin movimientos en este período.</td></tr> }
+          </tbody></table></div> }
+        </div>
+      }
+
+      @if (section === 'configuracion') {
+        <div class="page-heading"><div><p class="eyebrow">ADMINISTRACIÓN</p><h1>Configuración</h1><p class="muted">Métodos de pago y cuentas del equipo.</p></div></div>
+        <div class="card"><div class="card-heading"><h2>Métodos de pago</h2></div>@if (auth.isAdmin()) { <div class="inline-form"><label>Nombre <input [(ngModel)]="methodName" maxlength="80" placeholder="Transferencia, efectivo..." /></label><button class="button button-secondary" [disabled]="busy" (click)="saveMethod()">{{ editingMethodId ? 'Guardar cambios' : 'Agregar método' }}</button>@if (editingMethodId) { <button class="text-link" (click)="methodName = ''; editingMethodId = null">Cancelar</button> }</div> }
+          <div class="table-wrap"><table><thead><tr><th>Método</th><th>Estado</th><th class="right">Acciones</th></tr></thead><tbody>@for (m of methods; track m.id) { <tr><td><strong>{{ m.name }}</strong></td><td><span class="badge" [class.badge-muted]="!m.isActive">{{ m.isActive ? 'Activo' : 'Inactivo' }}</span></td><td class="right actions">@if (auth.isAdmin()) { <button class="text-link" (click)="editMethod(m)">Editar</button><button class="text-link" (click)="toggleMethod(m)">{{ m.isActive ? 'Desactivar' : 'Activar' }}</button> }</td></tr> } @empty { <tr><td colspan="3" class="empty">Sin métodos registrados.</td></tr> }</tbody></table></div>
+        </div>
+        @if (auth.isAdmin()) { <div class="card"><div class="card-heading"><div><h2>Usuarios</h2><p class="muted">Cada integrante debe usar su propia cuenta.</p></div></div><div class="inline-form"><label>Usuario <input [(ngModel)]="userName" maxlength="80" placeholder="Nombre de usuario" /></label><label>Contraseña <input type="password" [(ngModel)]="userPassword" minlength="12" autocomplete="new-password" placeholder="Mínimo 12 caracteres" /></label><label>Rol <select [(ngModel)]="userRole"><option value="Operador">Operador</option><option value="Administrador">Administrador</option></select></label><button class="button button-secondary" [disabled]="busy" (click)="createUser()">Crear usuario</button></div>
+          <div class="table-wrap"><table><thead><tr><th>Usuario</th><th>Rol</th><th>Estado</th><th class="right">Acciones</th></tr></thead><tbody>@for (u of users; track u.id) { <tr><td><strong>{{ u.userName }}</strong></td><td>{{ u.role }}</td><td><span class="badge" [class.badge-muted]="!u.isActive">{{ u.isActive ? 'Activo' : 'Inactivo' }}</span></td><td class="right actions"><button class="text-link" (click)="resetUserId = u.id; resetPassword = ''">Cambiar clave</button><button class="text-link" (click)="toggleUser(u)">{{ u.isActive ? 'Desactivar' : 'Activar' }}</button></td></tr> }</tbody></table></div>
+          @if (resetUserId) { <div class="inline-form password-reset"><label>Nueva contraseña <input type="password" [(ngModel)]="resetPassword" minlength="12" autocomplete="new-password" placeholder="Mínimo 12 caracteres" /></label><button class="button button-primary" (click)="changePassword()">Actualizar contraseña</button><button class="text-link" (click)="resetUserId = ''">Cancelar</button></div> }
+        </div> }
+      }
+    </main>
+  </div>
+</div>

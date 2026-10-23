@@ -1,0 +1,21 @@
+@host = https://localhost:7292
+@token = PEGAR_TOKEN_AQUI
+
+GET {{host}}/health/live
+
+###
+POST {{host}}/api/v1/auth/login
+Content-Type: application/json
+
+{
+  "userName": "admin",
+  "password": "REEMPLAZAR_CON_CLAVE_LOCAL"
+}
+
+###
+GET {{host}}/api/v1/suppliers?page=1&pageSize=20
+Authorization: Bearer {{token}}
+
+###
+GET {{host}}/api/v1/reports/dashboard
+Authorization: Bearer {{token}}
