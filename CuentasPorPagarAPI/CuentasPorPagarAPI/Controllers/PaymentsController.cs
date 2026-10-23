@@ -1,7 +1,7 @@
 using System.Security.Claims;
 using CuentasPorPagarAPI.Application;
 using CuentasPorPagarAPI.Contracts;
-using CuentasPorPagarAPI.Domain;
+using CuentasPorPagarAPI.Models;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 

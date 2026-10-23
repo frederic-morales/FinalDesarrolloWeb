@@ -10,6 +10,12 @@ La API, las migraciones code-first, el contenedor SQL Server y el frontend está
 - Docker Desktop con memoria suficiente para SQL Server Express.
 - Node.js 20.19 o superior y npm para Angular 21.
 
+## Organización de la API
+
+La solución .NET sigue la estructura usada en clase: `Contexts/` contiene `PayablesDbContext` y su fábrica de diseño; `Controllers/` contiene los endpoints; `Models/` contiene una clase por entidad y los tipos compartidos; `Migrations/` contiene el historial code-first de Entity Framework. `Application/` reúne las reglas de negocio y `Contracts/` define los cuerpos de entrada y salida de la API.
+
+Al cambiar un modelo o su configuración en el contexto, crea la siguiente migración desde `CuentasPorPagarAPI/CuentasPorPagarAPI` con `dotnet ef migrations add NombreDelCambio --output-dir Migrations` y aplícala con `dotnet ef database update`. La reorganización de carpetas no altera el esquema ni requiere una migración nueva.
+
 ## Iniciar la base local
 
 Desde la raíz, copia `.env.example` a `.env` y sustituye la clave de ejemplo por una contraseña fuerte propia. Después:

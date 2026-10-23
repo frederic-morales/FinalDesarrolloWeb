@@ -1,7 +1,7 @@
-using CuentasPorPagarAPI.Domain;
+using CuentasPorPagarAPI.Models;
 using Microsoft.EntityFrameworkCore;
 
-namespace CuentasPorPagarAPI.Data;
+namespace CuentasPorPagarAPI.Contexts;
 
 public sealed class PayablesDbContext(DbContextOptions<PayablesDbContext> options) : DbContext(options)
 {

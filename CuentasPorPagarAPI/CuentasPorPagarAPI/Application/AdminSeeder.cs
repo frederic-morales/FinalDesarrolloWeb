@@ -1,5 +1,5 @@
-using CuentasPorPagarAPI.Data;
-using CuentasPorPagarAPI.Domain;
+using CuentasPorPagarAPI.Contexts;
+using CuentasPorPagarAPI.Models;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 

@@ -1,8 +1,8 @@
 using System.Security.Claims;
 using System.Text;
 using CuentasPorPagarAPI.Application;
-using CuentasPorPagarAPI.Data;
-using CuentasPorPagarAPI.Domain;
+using CuentasPorPagarAPI.Contexts;
+using CuentasPorPagarAPI.Models;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;

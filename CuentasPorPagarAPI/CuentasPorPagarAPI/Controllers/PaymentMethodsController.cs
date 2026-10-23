@@ -1,6 +1,6 @@
 using CuentasPorPagarAPI.Contracts;
-using CuentasPorPagarAPI.Data;
-using CuentasPorPagarAPI.Domain;
+using CuentasPorPagarAPI.Contexts;
+using CuentasPorPagarAPI.Models;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;

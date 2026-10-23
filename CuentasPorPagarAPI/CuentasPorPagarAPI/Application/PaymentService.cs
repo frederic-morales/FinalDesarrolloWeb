@@ -1,7 +1,7 @@
 using System.Data;
 using CuentasPorPagarAPI.Contracts;
-using CuentasPorPagarAPI.Data;
-using CuentasPorPagarAPI.Domain;
+using CuentasPorPagarAPI.Contexts;
+using CuentasPorPagarAPI.Models;
 using Microsoft.EntityFrameworkCore;
 
 namespace CuentasPorPagarAPI.Application;

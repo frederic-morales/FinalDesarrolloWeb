@@ -1,7 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Design;
 
-namespace CuentasPorPagarAPI.Data;
+namespace CuentasPorPagarAPI.Contexts;
 
 public sealed class PayablesDbContextFactory : IDesignTimeDbContextFactory<PayablesDbContext>
 {
