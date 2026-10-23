@@ -1,4 +1,4 @@
-param([string]$BaseUrl = 'http://127.0.0.1:5296')
+param([string]$BaseUrl = 'https://localhost:7292')
 
 $ErrorActionPreference = 'Stop'
 $secretPath = Join-Path $env:APPDATA 'Microsoft\UserSecrets\CuentasPorPagarAPI-LocalDevelopment\secrets.json'

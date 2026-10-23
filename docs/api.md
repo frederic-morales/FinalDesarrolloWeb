@@ -1,6 +1,6 @@
 # Contrato inicial de la API
 
-Base local: `http://127.0.0.1:5296` (también puede ejecutarse el perfil HTTPS). Los cuerpos son JSON y las fechas usan `YYYY-MM-DD`. Salvo el login y `/health/live`, enviar `Authorization: Bearer <token>`. La respuesta de error usa `ProblemDetails`; los listados paginados devuelven `items`, `total`, `page` y `pageSize`.
+Base local con el perfil HTTPS de Visual Studio: `https://localhost:7292`. Los cuerpos son JSON y las fechas usan `YYYY-MM-DD`. Salvo el login y `/health/live`, enviar `Authorization: Bearer <token>`. La respuesta de error usa `ProblemDetails`; los listados paginados devuelven `items`, `total`, `page` y `pageSize`.
 
 ## Acceso
 

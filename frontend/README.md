@@ -1,6 +1,6 @@
 # Frontend Angular
 
-Panel del proyecto Cuentas por pagar. Angular 21 con componentes independientes, formularios y rutas protegidas. Las rutas de API usan `/api/v1`; el proxy local definido en `proxy.conf.json` las envía a `http://127.0.0.1:5296`.
+Panel del proyecto Cuentas por pagar. Angular 21 con componentes independientes, formularios y rutas protegidas. Las rutas de API usan `/api/v1`; el proxy local definido en `proxy.conf.json` las envía a `https://localhost:7292`. Inicia la API con el perfil **https** de Visual Studio o `dotnet run --launch-profile https`.
 
 ```powershell
 npm ci --legacy-peer-deps

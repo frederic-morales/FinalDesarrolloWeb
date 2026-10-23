@@ -31,10 +31,12 @@ dotnet user-secrets set "SeedAdmin:UserName" "admin"
 dotnet user-secrets set "SeedAdmin:Password" "CLAVE_ADMIN_DE_AL_MENOS_12_CARACTERES"
 dotnet ef database update
 dotnet run -- --seed-admin
-dotnet run --launch-profile http
+dotnet run --launch-profile https
 ```
 
-Las claves son ejemplos: cada integrante debe crear las suyas y no subir `.env` ni User Secrets al repositorio. `--seed-admin` se ejecuta solo la primera vez, antes de crear otros usuarios. Las migraciones se aplican mediante `dotnet ef database update`; la API no las aplica automáticamente al arrancar. La API local escucha en `http://localhost:5296`.
+Las claves son ejemplos: cada integrante debe crear las suyas y no subir `.env` ni User Secrets al repositorio. `--seed-admin` se ejecuta solo la primera vez, antes de crear otros usuarios. Las migraciones se aplican mediante `dotnet ef database update`; la API no las aplica automáticamente al arrancar. Para Angular, usa el perfil **https** de Visual Studio o el comando anterior: la API escucha en `https://localhost:7292` y también en `http://localhost:5296`. El puerto HTTP redirige a HTTPS; el proxy Angular se conecta directamente al puerto HTTPS para conservar el encabezado de autenticación.
+
+En Visual Studio, abre `CuentasPorPagarAPI/CuentasPorPagarAPI.slnx`, elige el perfil **https** junto al botón de ejecución y pulsa **F5**. Para comprobar que API y base están listas, abre `https://localhost:7292/health/ready`: debe responder `{"status":"ready"}`. Deja Visual Studio en ejecución mientras uses Angular.
 
 ## Iniciar Angular
 
@@ -45,7 +47,7 @@ npm ci --legacy-peer-deps
 npm start
 ```
 
-Abre `http://127.0.0.1:4200`. El proxy de desarrollo envía `/api` a `http://127.0.0.1:5296`, así que inicia la API antes. Usa la cuenta inicial guardada en tus User Secrets para acceder; `dotnet user-secrets list` permite consultarla localmente. Cambia la contraseña inicial antes de compartir la instancia o publicar la aplicación.
+Abre `http://localhost:4200`. El proxy de desarrollo envía `/api` a `https://localhost:7292`, así que inicia la API antes y reinicia `npm start` si cambiaste el proxy. Usa la cuenta inicial guardada en tus User Secrets para acceder; `dotnet user-secrets list` permite consultarla localmente. Cambia la contraseña inicial antes de compartir la instancia o publicar la aplicación.
 
 El frontend incluye acceso, resumen, proveedores, facturas, pagos, reportes y CSV, métodos de pago y usuarios. Para compilarlo: `npm run build`.
 
