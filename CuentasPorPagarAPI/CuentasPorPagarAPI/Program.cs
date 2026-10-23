@@ -57,18 +57,42 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
         };
         options.Events = new JwtBearerEvents
         {
+            OnAuthenticationFailed = context =>
+            {
+                context.HttpContext.RequestServices.GetRequiredService<ILoggerFactory>()
+                    .CreateLogger("JwtValidation").LogWarning(context.Exception,
+                        "No se pudo validar la firma o vigencia del token.");
+                return Task.CompletedTask;
+            },
             OnTokenValidated = async context =>
             {
+                var logger = context.HttpContext.RequestServices.GetRequiredService<ILoggerFactory>()
+                    .CreateLogger("JwtValidation");
                 if (!Guid.TryParse(context.Principal?.FindFirstValue(ClaimTypes.NameIdentifier), out var id))
                 {
+                    logger.LogWarning("Token sin identificador de usuario válido.");
                     context.Fail("Token inválido.");
                     return;
                 }
                 var db = context.HttpContext.RequestServices.GetRequiredService<PayablesDbContext>();
                 var user = await db.Users.AsNoTracking().SingleOrDefaultAsync(x => x.Id == id);
-                if (user is null || !user.IsActive || user.Role != context.Principal?.FindFirstValue(ClaimTypes.Role) ||
-                    user.SecurityStamp.ToString() != context.Principal?.FindFirstValue("security_stamp"))
+                if (user is null || !user.IsActive)
+                {
+                    logger.LogWarning("Token de usuario inexistente o inactivo.");
                     context.Fail("La cuenta ya no está activa.");
+                    return;
+                }
+                if (user.Role != context.Principal?.FindFirstValue(ClaimTypes.Role))
+                {
+                    logger.LogWarning("Token con rol distinto al usuario actual.");
+                    context.Fail("El rol del usuario cambió.");
+                    return;
+                }
+                if (user.SecurityStamp.ToString() != context.Principal?.FindFirstValue("security_stamp"))
+                {
+                    logger.LogWarning("Token con sello de seguridad distinto al usuario actual.");
+                    context.Fail("Las credenciales del usuario cambiaron.");
+                }
             }
         };
     });

@@ -20,6 +20,8 @@ $login = Send-Json '/api/v1/auth/login' 'Post' @{
 } @{}
 if ([string]::IsNullOrWhiteSpace($login.token)) { throw 'El login no devolvió un token.' }
 $headers = @{ Authorization = "Bearer $($login.token)" }
+$me = Invoke-RestMethod -Uri "$BaseUrl/api/v1/auth/me" -Headers $headers
+Assert-Equal $me.userName $settings.'SeedAdmin:UserName' 'El token del login debe funcionar en /auth/me'
 
 $suffix = [Guid]::NewGuid().ToString('N').Substring(0, 12)
 $supplier = Send-Json '/api/v1/suppliers' 'Post' @{

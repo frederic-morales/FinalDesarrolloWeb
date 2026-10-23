@@ -13,20 +13,33 @@ export class AuthService {
   readonly user = signal<User | null>(null);
   readonly isAdmin = computed(() => this.user()?.role === 'Administrador');
   readonly checking = signal(true);
+  private restoreInFlight: Promise<void> | null = null;
 
-  async restore(): Promise<void> {
-    if (sessionStorage.getItem(tokenKey)) {
-      try { this.user.set(await this.api.get<User>('/auth/me')); }
-      catch { this.logout(false); }
-    }
-    this.checking.set(false);
+  restore(): Promise<void> {
+    if (!this.checking()) return Promise.resolve();
+    if (this.restoreInFlight) return this.restoreInFlight;
+    this.restoreInFlight = (async () => {
+      if (sessionStorage.getItem(tokenKey)) {
+        try { this.user.set(await this.api.get<User>('/auth/me')); }
+        catch { this.logout(false); }
+      }
+    })().finally(() => {
+      this.checking.set(false);
+      this.restoreInFlight = null;
+    });
+    return this.restoreInFlight;
   }
 
   async login(userName: string, password: string): Promise<void> {
     const response = await this.api.post<LoginResponse>('/auth/login', { userName, password });
     sessionStorage.setItem(tokenKey, response.token);
     this.user.set(response.user);
-    await this.router.navigateByUrl('/resumen');
+    this.checking.set(false);
+    const navigated = await this.router.navigateByUrl('/resumen');
+    if (!navigated) {
+      this.logout(false);
+      throw new Error('No se pudo abrir el resumen. Intenta entrar de nuevo.');
+    }
   }
 
   logout(navigate = true): void {
