@@ -33,7 +33,7 @@ public sealed class PayablesDbContext(DbContextOptions<PayablesDbContext> option
             entity.Property(x => x.Email).HasMaxLength(200);
             entity.Property(x => x.Phone).HasMaxLength(40);
             entity.Property(x => x.Address).HasMaxLength(400);
-            entity.HasIndex(x => x.Nit).IsUnique().HasFilter("[Nit] IS NOT NULL");
+            entity.HasIndex(x => x.Nit).IsUnique().HasFilter("\"Nit\" IS NOT NULL");
             entity.HasIndex(x => x.Name);
         });
 
@@ -57,7 +57,7 @@ public sealed class PayablesDbContext(DbContextOptions<PayablesDbContext> option
             entity.Property(x => x.Status).HasConversion<string>().HasMaxLength(20);
             entity.HasIndex(x => new { x.SupplierId, x.Series, x.Number }).IsUnique();
             entity.HasIndex(x => x.DueDate);
-            entity.ToTable(t => t.HasCheckConstraint("CK_PurchaseInvoice_Total", "[Total] > 0"));
+            entity.ToTable(t => t.HasCheckConstraint("CK_PurchaseInvoice_Total", "\"Total\" > 0"));
             entity.HasOne(x => x.Supplier).WithMany(x => x.Invoices).HasForeignKey(x => x.SupplierId).OnDelete(DeleteBehavior.Restrict);
         });
 
@@ -68,7 +68,7 @@ public sealed class PayablesDbContext(DbContextOptions<PayablesDbContext> option
             entity.Property(x => x.Quantity).HasPrecision(18, 3);
             entity.Property(x => x.UnitPrice).HasPrecision(18, 2);
             entity.Property(x => x.Subtotal).HasPrecision(18, 2);
-            entity.ToTable(t => t.HasCheckConstraint("CK_InvoiceLine_Values", "[Quantity] > 0 AND [UnitPrice] > 0 AND [Subtotal] > 0"));
+            entity.ToTable(t => t.HasCheckConstraint("CK_InvoiceLine_Values", "\"Quantity\" > 0 AND \"UnitPrice\" > 0 AND \"Subtotal\" > 0"));
             entity.HasOne(x => x.PurchaseInvoice).WithMany(x => x.Lines).HasForeignKey(x => x.PurchaseInvoiceId).OnDelete(DeleteBehavior.Cascade);
         });
 
@@ -78,7 +78,7 @@ public sealed class PayablesDbContext(DbContextOptions<PayablesDbContext> option
             entity.Property(x => x.Reference).HasMaxLength(100);
             entity.Property(x => x.Amount).HasPrecision(18, 2);
             entity.Property(x => x.Status).HasConversion<string>().HasMaxLength(20);
-            entity.ToTable(t => t.HasCheckConstraint("CK_Payment_Amount", "[Amount] > 0"));
+            entity.ToTable(t => t.HasCheckConstraint("CK_Payment_Amount", "\"Amount\" > 0"));
             entity.HasIndex(x => new { x.SupplierId, x.Date });
             entity.HasOne(x => x.Supplier).WithMany(x => x.Payments).HasForeignKey(x => x.SupplierId).OnDelete(DeleteBehavior.Restrict);
             entity.HasOne(x => x.PaymentMethod).WithMany().HasForeignKey(x => x.PaymentMethodId).OnDelete(DeleteBehavior.Restrict);
@@ -89,7 +89,7 @@ public sealed class PayablesDbContext(DbContextOptions<PayablesDbContext> option
         {
             entity.HasKey(x => x.Id);
             entity.Property(x => x.Amount).HasPrecision(18, 2);
-            entity.ToTable(t => t.HasCheckConstraint("CK_PaymentAllocation_Amount", "[Amount] > 0"));
+            entity.ToTable(t => t.HasCheckConstraint("CK_PaymentAllocation_Amount", "\"Amount\" > 0"));
             entity.HasIndex(x => new { x.PaymentId, x.PurchaseInvoiceId }).IsUnique();
             entity.HasIndex(x => x.PurchaseInvoiceId);
             entity.HasOne(x => x.Payment).WithMany(x => x.Allocations).HasForeignKey(x => x.PaymentId).OnDelete(DeleteBehavior.Restrict);

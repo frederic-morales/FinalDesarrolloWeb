@@ -1,7 +1,7 @@
 using Microsoft.AspNetCore.Diagnostics;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
+using Npgsql;
 
 namespace CuentasPorPagarAPI.Application;
 
@@ -17,15 +17,15 @@ public sealed class ApiExceptionHandler(ILogger<ApiExceptionHandler> logger) : I
                 status = api.StatusCode;
                 title = api.Message;
                 break;
-            case DbUpdateException { InnerException: SqlException sql } when sql.Number is 2601 or 2627:
+            case DbUpdateException { InnerException: PostgresException pg } when pg.SqlState == PostgresErrorCodes.UniqueViolation:
                 status = StatusCodes.Status409Conflict;
                 title = "Ya existe un registro con estos datos únicos.";
                 break;
-            case DbUpdateException { InnerException: SqlException sql } when sql.Number == 1205:
+            case DbUpdateException { InnerException: PostgresException pg } when pg.SqlState is PostgresErrorCodes.DeadlockDetected or PostgresErrorCodes.SerializationFailure:
                 status = StatusCodes.Status409Conflict;
                 title = "La operación coincidió con otra actualización. Inténtelo de nuevo.";
                 break;
-            case SqlException sql when sql.Number == 1205:
+            case PostgresException pg when pg.SqlState is PostgresErrorCodes.DeadlockDetected or PostgresErrorCodes.SerializationFailure:
                 status = StatusCodes.Status409Conflict;
                 title = "La operación coincidió con otra actualización. Inténtelo de nuevo.";
                 break;

@@ -4,7 +4,7 @@
 
 **Entrega indicada en la guía:** 31 de octubre de 2026
 
-**Estado:** API, migraciones, SQL Server Express local y Angular implementados y validados. Queda por definir la publicación web y preparar los entregables del grupo.
+**Estado de este documento:** plan inicial conservado como registro histórico. El 26 de octubre se cambió la implementación a PostgreSQL local y Neon para producción, con Render y Vercel preparados para publicación. Sigue la [guía vigente de instalación y despliegue](despliegue.md); las menciones posteriores a SQL Server y Azure describen alternativas evaluadas, no la configuración actual.
 
 ## 1. Encargo del curso
 

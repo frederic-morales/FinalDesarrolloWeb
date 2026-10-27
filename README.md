@@ -1,6 +1,6 @@
 # Cuentas por pagar
 
-Aplicación web del curso **Desarrollo Web** para registrar proveedores, facturas de compra, pagos y estados de cuenta. Es un monorepositorio: la API usa **ASP.NET Core Web API con .NET 10**, los datos se guardan en **SQL Server Express dentro de Docker** y la interfaz usa **Angular 21**. Cada integrante puede tener su propia base local.
+Aplicación web del curso **Desarrollo Web** para registrar proveedores, facturas de compra, pagos y estados de cuenta. Es un monorepositorio: la API usa **ASP.NET Core Web API con .NET 10**, los datos se guardan en **PostgreSQL 17 dentro de Docker** durante el desarrollo y la interfaz usa **Angular 21**. Para publicar se preparó **Neon Free + Render Free + Vercel Hobby**. Cada integrante puede tener su propia base local.
 
 ## Contenido
 
@@ -8,14 +8,15 @@ Aplicación web del curso **Desarrollo Web** para registrar proveedores, factura
 2. [Backend: estructura y código](#backend-estructura-y-código)
 3. [Backend: base de datos y reglas](#backend-base-de-datos-y-reglas)
 4. [Backend: API y seguridad](#backend-api-y-seguridad)
-5. [Ejecutar SQL Server y la API](#ejecutar-sql-server-y-la-api)
+5. [Ejecutar PostgreSQL y la API](#ejecutar-postgresql-y-la-api)
 6. [Comprobar el backend](#comprobar-el-backend)
 7. [Frontend: estructura y código](#frontend-estructura-y-código)
 8. [Ejecutar Angular](#ejecutar-angular)
+9. [Publicar en la web](docs/despliegue.md)
 
 ## Cómo funciona el sistema
 
-El navegador abre Angular en `http://localhost:4200`. Angular envía solicitudes a rutas `/api/v1`; durante el desarrollo, su proxy las reenvía a la API en `https://localhost:7292`. Un controlador recibe cada solicitud, usa un servicio de aplicación o el contexto de Entity Framework Core y devuelve JSON. `PayablesDbContext` convierte las consultas y los cambios de entidades en operaciones de SQL Server.
+El navegador abre Angular en `http://localhost:4200`. Angular envía solicitudes a rutas `/api/v1`; durante el desarrollo, su proxy las reenvía a la API en `https://localhost:7292`. Un controlador recibe cada solicitud, usa un servicio de aplicación o el contexto de Entity Framework Core y devuelve JSON. `PayablesDbContext` convierte las consultas y los cambios de entidades en operaciones de PostgreSQL.
 
 ```mermaid
 flowchart LR
@@ -25,7 +26,7 @@ flowchart LR
     C --> S["Servicios de Application"]
     C --> D["PayablesDbContext"]
     S --> D
-    D --> B["SQL Server Express :1433"]
+    D --> B["PostgreSQL :5432"]
 ```
 
 La API es la responsable de validar permisos y reglas de negocio. Las validaciones de los formularios Angular ayudan al usuario, pero la API vuelve a comprobar los datos antes de guardarlos.
@@ -46,15 +47,15 @@ La solución está en [`CuentasPorPagarAPI/CuentasPorPagarAPI.slnx`](CuentasPorP
 | [`appsettings.json`](CuentasPorPagarAPI/CuentasPorPagarAPI/appsettings.json) y [`appsettings.Development.json`](CuentasPorPagarAPI/CuentasPorPagarAPI/appsettings.Development.json) | Valores generales, CORS y registros de desarrollo; las claves privadas se suministran aparte. |
 | [`Properties/launchSettings.json`](CuentasPorPagarAPI/CuentasPorPagarAPI/Properties/launchSettings.json) | Perfiles `http` y `https` para Visual Studio y `dotnet run`. |
 | [`CuentasPorPagarAPI.http`](CuentasPorPagarAPI/CuentasPorPagarAPI/CuentasPorPagarAPI.http) | Solicitudes de ejemplo para probar login, proveedores y resumen desde Visual Studio. |
-| [`CuentasPorPagarAPI.csproj`](CuentasPorPagarAPI/CuentasPorPagarAPI/CuentasPorPagarAPI.csproj) | Versión de .NET y paquetes: EF Core SQL Server, JWT, OpenAPI y otros. |
+| [`CuentasPorPagarAPI.csproj`](CuentasPorPagarAPI/CuentasPorPagarAPI/CuentasPorPagarAPI.csproj) | Versión de .NET y paquetes: EF Core PostgreSQL, JWT, OpenAPI y otros. |
 
 ### Qué hace `Program.cs`
 
-1. Obtiene `ConnectionStrings:DefaultConnection` y registra `PayablesDbContext` con `UseSqlServer`. Registra también los servicios de facturas, pagos, reportes y el hasher de contraseñas.
+1. Obtiene `ConnectionStrings:DefaultConnection` y registra `PayablesDbContext` con `UseNpgsql`. Registra también los servicios de facturas, pagos, reportes y el hasher de contraseñas.
 2. Lee `Jwt:Issuer`, `Jwt:Audience` y `Jwt:Key`. Exige una clave de al menos 32 bytes, configura la validación de firma, emisor, destinatario y vencimiento, y registra autorización.
-3. En cada solicitud autenticada consulta el usuario en SQL Server. Rechaza tokens de cuentas inactivas, con rol cambiado o con un `SecurityStamp` distinto. Así, cambiar la contraseña o el estado invalida tokens anteriores.
+3. En cada solicitud autenticada consulta el usuario en PostgreSQL. Rechaza tokens de cuentas inactivas, con rol cambiado o con un `SecurityStamp` distinto. Así, cambiar la contraseña o el estado invalida tokens anteriores.
 4. Limita el login a 10 intentos por dirección IP y minuto. Configura CORS con `Cors:AllowedOrigins`, redirección HTTP a HTTPS y respuestas de error.
-5. Publica los controladores, `/health/live` para comprobar que el proceso responde y `/health/ready` para comprobar la conexión a SQL Server. En desarrollo publica el documento OpenAPI en `/openapi/v1.json`.
+5. Publica los controladores, `/health/live` para comprobar que el proceso responde y `/health/ready` para comprobar la conexión a PostgreSQL. En desarrollo publica el documento OpenAPI en `/openapi/v1.json`.
 6. Con el argumento `--seed-admin` ejecuta `AdminSeeder` y termina; sin ese argumento inicia el servidor. **No aplica migraciones automáticamente.**
 
 ## Backend: base de datos y reglas
@@ -80,8 +81,7 @@ El **saldo de una factura activa** se calcula como `total − suma de aplicacion
 
 #### Migraciones existentes
 
-- `20261021183833_InitialCreate` crea tablas, relaciones, índices, restricciones y métodos de pago iniciales.
-- `20261021184007_AddUserSecurityStamp` agrega el sello de seguridad de usuarios.
+- `20261026143248_InitialPostgres` crea tablas, relaciones, índices, restricciones, métodos de pago iniciales y el sello de seguridad de usuarios. Sustituye las migraciones antiguas de SQL Server porque se inicia una base PostgreSQL vacía.
 - `PayablesDbContextModelSnapshot.cs` describe el modelo vigente que EF compara al crear la siguiente migración.
 
 El historial de migraciones aplicadas se guarda en `__EFMigrationsHistory` de cada base. Para cambiar el esquema, modifica el modelo o `OnModelCreating` y, desde la carpeta del proyecto .NET, ejecuta:
@@ -108,7 +108,7 @@ Las operaciones financieras se validan en el backend incluso si Angular ya valid
 
 ## Backend: API y seguridad
 
-Los [contratos HTTP](CuentasPorPagarAPI/CuentasPorPagarAPI/Contracts/ApiContracts.cs) definen campos de entrada y salida. Por ejemplo, `InvoiceRequest` trae conceptos sin subtotal ni total porque el backend los calcula; `InvoiceResponse` añade total, pagado y saldo. Las fechas viajan como `YYYY-MM-DD` y los importes usan decimales en SQL Server.
+Los [contratos HTTP](CuentasPorPagarAPI/CuentasPorPagarAPI/Contracts/ApiContracts.cs) definen campos de entrada y salida. Por ejemplo, `InvoiceRequest` trae conceptos sin subtotal ni total porque el backend los calcula; `InvoiceResponse` añade total, pagado y saldo. Las fechas viajan como `YYYY-MM-DD` y los importes usan decimales en PostgreSQL.
 
 Todas las rutas de negocio están bajo `/api/v1`. Salvo `POST /auth/login`, las rutas de los controladores requieren `Authorization: Bearer <token>`. Los dos endpoints `/health` permiten comprobar el proceso y la base sin iniciar sesión.
 
@@ -126,37 +126,37 @@ Ejemplo de flujo para registrar un pago:
 
 1. Angular envía `POST /api/v1/payments` con proveedor, método, fecha, importe y aplicaciones a facturas.
 2. El interceptor agrega el token JWT. `PaymentsController` obtiene el identificador del usuario autenticado y llama a `PaymentService`.
-3. El servicio verifica reglas y saldos en una transacción; EF Core guarda `Payment` y sus `PaymentAllocation` en SQL Server.
+3. El servicio verifica reglas y saldos en una transacción; EF Core guarda `Payment` y sus `PaymentAllocation` en PostgreSQL.
 4. La API devuelve `201 Created` y el frontend vuelve a consultar pagos y facturas para mostrar el saldo actualizado.
 
 Las respuestas habituales son `200` para consultas y cambios, `201` al crear, `204` al anular o cambiar estados, `400` para datos inválidos, `401` para falta de autenticación, `403` por rol insuficiente, `404` si no existe el recurso y `409` ante conflictos de negocio o datos únicos. Consulta [`docs/api.md`](docs/api.md) para ejemplos JSON de las operaciones.
 
-## Ejecutar SQL Server y la API
+## Ejecutar PostgreSQL y la API
 
 ### Requisitos
 
 - SDK **.NET 10** y herramienta `dotnet-ef` versión 10.
-- Docker Desktop con recursos suficientes para SQL Server Express.
+- Docker Desktop con PostgreSQL 17.
 - Para el frontend: Node.js **20.19 o superior** y npm.
 - Opcional: Visual Studio y DBeaver.
 
 ### 1. Iniciar la base local
 
-Desde la raíz del repositorio, copia `.env.example` a `.env` y cambia `MSSQL_SA_PASSWORD` por una contraseña local fuerte:
+Desde la raíz del repositorio, copia `.env.example` a `.env` y cambia `POSTGRES_PASSWORD` por una contraseña local fuerte:
 
 ```powershell
 Copy-Item .env.example .env
 docker compose up -d
 ```
 
-[`compose.yaml`](compose.yaml) inicia SQL Server 2022 Express, publica `127.0.0.1:1433` y usa el volumen `sqlserver_data` para conservar datos entre reinicios. `.env` está ignorado por Git. Cada compañero puede usar su propia contraseña y base local.
+[`compose.yaml`](compose.yaml) inicia PostgreSQL 17, publica solo `127.0.0.1:5432` y usa el volumen `postgres_data` para conservar datos entre reinicios. `.env` está ignorado por Git. Cada compañero puede usar su propia contraseña y base local. El volumen anterior de SQL Server no se borra automáticamente.
 
 ### 2. Configurar secretos de la API
 
-Abre otra terminal en `CuentasPorPagarAPI/CuentasPorPagarAPI`. Sustituye los ejemplos por valores tuyos; la contraseña de la conexión debe coincidir con `MSSQL_SA_PASSWORD` de `.env`:
+Abre otra terminal en `CuentasPorPagarAPI/CuentasPorPagarAPI`. Sustituye los ejemplos por valores tuyos; la contraseña de la conexión debe coincidir con `POSTGRES_PASSWORD` de `.env`:
 
 ```powershell
-dotnet user-secrets set "ConnectionStrings:DefaultConnection" "Server=127.0.0.1,1433;Database=CuentasPorPagar;User Id=sa;Password=TU_CLAVE_LOCAL;Encrypt=True;TrustServerCertificate=True"
+dotnet user-secrets set "ConnectionStrings:DefaultConnection" "Host=127.0.0.1;Port=5432;Database=CuentasPorPagar;Username=cpp_local;Password=TU_CLAVE_LOCAL"
 dotnet user-secrets set "Jwt:Key" "CLAVE_ALEATORIA_DE_AL_MENOS_32_BYTES"
 dotnet user-secrets set "SeedAdmin:UserName" "admin"
 dotnet user-secrets set "SeedAdmin:Password" "CLAVE_ADMIN_DE_AL_MENOS_12_CARACTERES"
@@ -175,7 +175,7 @@ dotnet run -- --seed-admin
 
 El primer comando aplica las migraciones y crea la base si falta. El segundo crea el administrador y termina. `--seed-admin` es para la primera instalación: si ya hay usuarios, el seeder rechaza ejecutarse otra vez. Después puedes crear más cuentas desde la sección Configuración de Angular con un usuario Administrador.
 
-En DBeaver usa controlador SQL Server, host `127.0.0.1`, puerto `1433`, base `CuentasPorPagar`, usuario `sa` y la contraseña de `.env`. Si se solicita, activa *Trust server certificate* para el entorno local.
+En DBeaver usa el controlador PostgreSQL, host `127.0.0.1`, puerto `5432`, base `CuentasPorPagar`, usuario `cpp_local` y la contraseña de `.env`.
 
 ### 4. Iniciar la API
 
@@ -185,11 +185,11 @@ En Visual Studio abre `CuentasPorPagarAPI/CuentasPorPagarAPI.slnx`, selecciona e
 dotnet run --launch-profile https
 ```
 
-El perfil escucha en `https://localhost:7292` y `http://localhost:5296`. HTTP redirige a HTTPS. Prueba `https://localhost:7292/health/live`: responde `{"status":"ok"}`. `https://localhost:7292/health/ready` responde `{"status":"ready"}` cuando SQL Server está accesible; de lo contrario devuelve `503`. En desarrollo puedes consultar `https://localhost:7292/openapi/v1.json`.
+El perfil escucha en `https://localhost:7292` y `http://localhost:5296`. HTTP redirige a HTTPS. Prueba `https://localhost:7292/health/live`: responde `{"status":"ok"}`. `https://localhost:7292/health/ready` responde `{"status":"ready"}` cuando PostgreSQL está accesible; de lo contrario devuelve `503`. En desarrollo puedes consultar `https://localhost:7292/openapi/v1.json`.
 
 ## Comprobar el backend
 
-Desde la raíz, `dotnet build CuentasPorPagarAPI/CuentasPorPagarAPI.slnx` verifica la compilación. Con SQL Server y la API iniciados, `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\smoke-api.ps1` ejecuta el [recorrido integrado](scripts/smoke-api.ps1): inicia sesión, crea proveedor, factura y pago de prueba, comprueba saldos y rechazo de sobrepago, anula los documentos y desactiva el proveedor temporal. **Este script escribe registros en la base local.**
+Desde la raíz, `dotnet build CuentasPorPagarAPI/CuentasPorPagarAPI.slnx` verifica la compilación. Con PostgreSQL y la API iniciados, `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\smoke-api.ps1` ejecuta el [recorrido integrado](scripts/smoke-api.ps1): inicia sesión, crea proveedor, factura y pago de prueba, comprueba saldos y rechazo de sobrepago, anula los documentos y desactiva el proveedor temporal. **Este script escribe registros en la base local.**
 
 Para agregar una entidad o columna, cambia `Models/` y `PayablesDbContext`, crea una migración en `Migrations/` y aplícala en cada base local. Para agregar una operación HTTP, define sus datos en `Contracts/`, implementa las reglas en `Application/` cuando correspondan y expón la ruta en `Controllers/`.
 
@@ -218,7 +218,7 @@ La aplicación Angular está en [`frontend/`](frontend). Usa componentes indepen
 
 `LoginComponent` envía usuario y contraseña a `AuthService.login()`. Este llama a `POST /api/v1/auth/login` a través de `ApiService`, guarda el token en `sessionStorage`, establece el usuario y navega a `/resumen`. El token dura hasta que se cierra la pestaña o se cierra sesión; el servidor también exige que siga vigente y que la cuenta continúe activa.
 
-Al abrir una ruta protegida tras recargar la página, el guard de `app.routes.ts` espera `AuthService.restore()`. Si hay un token guardado, `restore()` consulta `GET /auth/me` para recuperar y validar al usuario. Si falla, borra la sesión y envía a `/ingresar`. El interceptor añade el token solo a peticiones que empiezan por `/api/`. `isAdmin` controla qué acciones se muestran, pero los permisos reales los comprueba la API.
+Al abrir una ruta protegida tras recargar la página, el guard de `app.routes.ts` espera `AuthService.restore()`. Si hay un token guardado, `restore()` consulta `GET /auth/me` para recuperar y validar al usuario. Si falla, borra la sesión y envía a `/ingresar`. El interceptor añade el token solo a peticiones de la API configurada. `isAdmin` controla qué acciones se muestran, pero los permisos reales los comprueba la API.
 
 `ApiService.all()` recorre páginas de 100 registros hasta reunir los resultados; `blob()` descarga el CSV. `apiError()` transforma errores HTTP en mensajes legibles para los formularios.
 
@@ -252,4 +252,4 @@ La API debe estar ejecutándose con el perfil **https**. Usar su puerto HTTP `52
 
 Para agregar otra sección del panel, amplía `nav`, `load()` y el bloque correspondiente de `workspace.component.html`; agrega interfaces en `models.ts` y usa `ApiService`. Para una página independiente, crea un componente y registra su ruta en `app.routes.ts`.
 
-Publicar el repositorio en GitHub **no publica la aplicación web**: para usarla por Internet hay que alojar Angular, la API por HTTPS y una instancia SQL Server accesible para la API. En producción configura el enrutamiento de `/api` o la URL pública y los orígenes CORS; mantén las claves fuera del repositorio y no expongas SQL Server directamente a Internet. Consulta también el [plan y análisis](docs/plan-proyecto.md) y el [contrato con ejemplos JSON](docs/api.md).
+Para alojar Angular en Vercel Hobby, la API en Render Free y PostgreSQL en Neon Free, sigue la [guía paso a paso](docs/despliegue.md). La URL pública de la API se incorpora en la compilación de Angular mediante `API_BASE_URL`; Render debe permitir el origen exacto de Vercel mediante `Cors__AllowedOrigins__0`. Consulta también el [plan y análisis](docs/plan-proyecto.md) y el [contrato con ejemplos JSON](docs/api.md).

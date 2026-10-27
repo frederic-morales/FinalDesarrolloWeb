@@ -9,4 +9,4 @@ npm start
 
 Abre `http://127.0.0.1:4200`. También puedes ejecutar `npm run build` para generar `dist/`.
 
-La sesión se conserva en `sessionStorage` hasta cerrar la pestaña o salir del sistema. La API valida el token y los permisos en cada solicitud. Para publicar, configura un proxy HTTPS de `/api` hacia la API o ajusta la URL base y CORS.
+La sesión se conserva en `sessionStorage` hasta cerrar la pestaña o salir del sistema. La API valida el token y los permisos en cada solicitud. `npm start` genera la URL local `/api/v1`; para Vercel, configura `API_BASE_URL=https://TU_API.onrender.com/api/v1` y el build incorporará esa URL. Autoriza el dominio exacto de Vercel en CORS de Render. Consulta [la guía de despliegue](../docs/despliegue.md).

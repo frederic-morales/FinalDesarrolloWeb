@@ -3,9 +3,13 @@
   "version": "0.0.0",
   "scripts": {
     "ng": "ng",
+    "prestart": "node scripts/write-api-config.mjs",
     "start": "ng serve --proxy-config proxy.conf.json",
+    "prebuild": "node scripts/write-api-config.mjs",
     "build": "ng build",
+    "prewatch": "node scripts/write-api-config.mjs",
     "watch": "ng build --watch --configuration development",
+    "pretest": "node scripts/write-api-config.mjs",
     "test": "ng test"
   },
   "private": true,

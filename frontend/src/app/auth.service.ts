@@ -3,6 +3,7 @@ import { HttpErrorResponse, HttpInterceptorFn } from '@angular/common/http';
 import { Router } from '@angular/router';
 import { ApiService } from './api.service';
 import { LoginResponse, User } from './models';
+import { apiBaseUrl } from './api-config.generated';
 
 const tokenKey = 'cpp.token';
 
@@ -54,7 +55,7 @@ export class AuthService {
 export const authInterceptor: HttpInterceptorFn = (request, next) => {
   const auth = inject(AuthService);
   const token = auth.token();
-  return next(token && request.url.startsWith('/api/')
+  return next(token && request.url.startsWith(`${apiBaseUrl}/`)
     ? request.clone({ setHeaders: { Authorization: `Bearer ${token}` } }) : request);
 };
 

@@ -9,6 +9,7 @@
 node_modules/
 .angular/
 dist/
+frontend/src/app/api-config.generated.ts
 coverage/
 
 # Configuración y datos locales

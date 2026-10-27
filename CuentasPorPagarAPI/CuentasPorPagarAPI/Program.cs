@@ -22,7 +22,7 @@ builder.Services.AddExceptionHandler<ApiExceptionHandler>();
 
 var connection = builder.Configuration.GetConnectionString("DefaultConnection")
     ?? throw new InvalidOperationException("Configure ConnectionStrings:DefaultConnection fuera del repositorio.");
-builder.Services.AddDbContext<PayablesDbContext>(options => options.UseSqlServer(connection));
+builder.Services.AddDbContext<PayablesDbContext>(options => options.UseNpgsql(connection));
 builder.Services.AddScoped<InvoiceService>();
 builder.Services.AddScoped<PaymentService>();
 builder.Services.AddScoped<ReportService>();
@@ -119,7 +119,8 @@ builder.Services.AddCors(options => options.AddPolicy("Angular", policy =>
 var app = builder.Build();
 app.UseExceptionHandler();
 if (app.Environment.IsDevelopment()) app.MapOpenApi();
-app.UseHttpsRedirection();
+// Render termina TLS antes de enviar la solicitud HTTP al contenedor.
+if (app.Environment.IsDevelopment()) app.UseHttpsRedirection();
 app.UseCors("Angular");
 app.UseRateLimiter();
 app.UseAuthentication();

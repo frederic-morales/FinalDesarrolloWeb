@@ -2,11 +2,12 @@ import { inject, Injectable } from '@angular/core';
 import { HttpClient, HttpErrorResponse, HttpParams } from '@angular/common/http';
 import { firstValueFrom } from 'rxjs';
 import { Page } from './models';
+import { apiBaseUrl } from './api-config.generated';
 
 @Injectable({ providedIn: 'root' })
 export class ApiService {
   private readonly http = inject(HttpClient);
-  private readonly base = '/api/v1';
+  private readonly base = apiBaseUrl;
 
   get<T>(path: string, query?: Record<string, string | number | boolean | null | undefined>): Promise<T> {
     let params = new HttpParams();
