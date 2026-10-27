@@ -13,3 +13,5 @@ services:
         sync: false
       - key: Jwt__Key
         generateValue: true
+      - key: Cors__AllowedOrigins__0
+        value: https://final-desarrollo-web.vercel.app
