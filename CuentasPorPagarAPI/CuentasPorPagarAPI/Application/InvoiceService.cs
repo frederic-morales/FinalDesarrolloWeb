@@ -34,8 +34,9 @@ public sealed class InvoiceService(PayablesDbContext db)
             .SingleOrDefaultAsync(x => x.Id == id, cancellationToken)
             ?? throw new ApiException(404, "Factura no encontrada.");
         if (invoice.Status != DocumentStatus.Active) throw new ApiException(409, "La factura está anulada.");
-        if (await db.PaymentAllocations.AnyAsync(x => x.PurchaseInvoiceId == id && x.Payment.Status == DocumentStatus.Active, cancellationToken))
-            throw new ApiException(409, "Anule primero los pagos de esta factura para modificarla.");
+        if (await db.PaymentAllocations.AnyAsync(x => x.PurchaseInvoiceId == id, cancellationToken) ||
+            await db.AdjustmentAllocations.AnyAsync(x => x.PurchaseInvoiceId == id, cancellationToken))
+            throw new ApiException(409, "Una factura con movimientos registrados no puede modificarse. Anúlela si corresponde.");
         if (!await db.Suppliers.AnyAsync(x => x.Id == request.SupplierId && x.IsActive, cancellationToken))
             throw new ApiException(400, "El proveedor no existe o está inactivo.");
         if (await IsDuplicateAsync(request.SupplierId, series, number, id, cancellationToken))
@@ -62,7 +63,11 @@ public sealed class InvoiceService(PayablesDbContext db)
         if (invoice.Status == DocumentStatus.Cancelled) return;
         if (await db.PaymentAllocations.AnyAsync(x => x.PurchaseInvoiceId == id && x.Payment.Status == DocumentStatus.Active, cancellationToken))
             throw new ApiException(409, "Anule primero los pagos aplicados a esta factura.");
+        if (await db.AdjustmentAllocations.AnyAsync(x => x.PurchaseInvoiceId == id &&
+            x.SupplierAdjustment.Status == DocumentStatus.Active, cancellationToken))
+            throw new ApiException(409, "Anule primero las notas y ajustes aplicados a esta factura.");
         invoice.Status = DocumentStatus.Cancelled;
+        invoice.CancelledOn = DateOnly.FromDateTime(DateTime.UtcNow.AddHours(-6));
         await db.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
     }
@@ -73,14 +78,17 @@ public sealed class InvoiceService(PayablesDbContext db)
             .Include(x => x.Supplier).Include(x => x.Lines)
             .SingleOrDefaultAsync(x => x.Id == id, cancellationToken);
         if (invoice is null) return null;
-        var paid = await db.PaymentAllocations.AsNoTracking()
-            .Where(x => x.PurchaseInvoiceId == id && x.Payment.Status == DocumentStatus.Active)
-            .SumAsync(x => (decimal?)x.Amount, cancellationToken) ?? 0m;
+        var today = DateOnly.FromDateTime(DateTime.UtcNow.AddHours(-6));
+        var amounts = await PayableQuery.At(db, today).Where(x => x.Invoice.Id == id)
+            .Select(x => new { x.Paid, x.Debit, x.Credit }).SingleOrDefaultAsync(cancellationToken);
+        var paid = amounts?.Paid ?? 0m;
+        var debit = amounts?.Debit ?? 0m;
+        var credit = amounts?.Credit ?? 0m;
         return new InvoiceResponse(invoice.Id, invoice.SupplierId, invoice.Supplier.Name, invoice.Series,
             invoice.Number, invoice.IssueDate, invoice.DueDate, invoice.Total, paid,
-            invoice.Status == DocumentStatus.Active ? invoice.Total - paid : 0m, invoice.Status.ToString(),
+            invoice.Status == DocumentStatus.Active ? invoice.Total + debit - credit - paid : 0m, invoice.Status.ToString(),
             invoice.Lines.OrderBy(x => x.Id).Select(x => new InvoiceLineResponse(x.Id, x.Description,
-                x.Quantity, x.UnitPrice, x.Subtotal)).ToList());
+                x.Quantity, x.UnitPrice, x.Subtotal)).ToList(), debit, credit);
     }
 
     public async Task<PageResult<InvoiceListResponse>> ListAsync(
@@ -97,12 +105,24 @@ public sealed class InvoiceService(PayablesDbContext db)
         {
             Invoice = x,
             Paid = x.Allocations.Where(a => a.Payment.Status == DocumentStatus.Active)
+                .Sum(a => (decimal?)a.Amount) ?? 0m,
+            Debit = x.AdjustmentAllocations.Where(a =>
+                a.SupplierAdjustment.Status == DocumentStatus.Active &&
+                (a.SupplierAdjustment.Kind == AdjustmentKind.DebitNote ||
+                 a.SupplierAdjustment.Kind == AdjustmentKind.OtherCharge))
+                .Sum(a => (decimal?)a.Amount) ?? 0m,
+            Credit = x.AdjustmentAllocations.Where(a =>
+                a.SupplierAdjustment.Status == DocumentStatus.Active &&
+                (a.SupplierAdjustment.Kind == AdjustmentKind.CreditNote ||
+                 a.SupplierAdjustment.Kind == AdjustmentKind.OtherCredit))
                 .Sum(a => (decimal?)a.Amount) ?? 0m
         });
         if (pending == true || overdue == true)
-            projected = projected.Where(x => x.Invoice.Status == DocumentStatus.Active && x.Invoice.Total > x.Paid);
+            projected = projected.Where(x => x.Invoice.Status == DocumentStatus.Active &&
+                x.Invoice.Total + x.Debit > x.Paid + x.Credit);
         if (pending == false)
-            projected = projected.Where(x => x.Invoice.Status == DocumentStatus.Cancelled || x.Invoice.Total <= x.Paid);
+            projected = projected.Where(x => x.Invoice.Status == DocumentStatus.Cancelled ||
+                x.Invoice.Total + x.Debit <= x.Paid + x.Credit);
 
         var total = await projected.CountAsync(cancellationToken);
         var rows = await projected.OrderByDescending(x => x.Invoice.IssueDate).ThenByDescending(x => x.Invoice.Id)
@@ -110,9 +130,10 @@ public sealed class InvoiceService(PayablesDbContext db)
         var items = rows.Select(x => new InvoiceListResponse(
             x.Invoice.Id, x.Invoice.SupplierId, x.Invoice.Supplier.Name, x.Invoice.Series, x.Invoice.Number,
             x.Invoice.IssueDate, x.Invoice.DueDate, x.Invoice.Total, x.Paid,
-            x.Invoice.Status == DocumentStatus.Active ? x.Invoice.Total - x.Paid : 0m,
+            x.Invoice.Status == DocumentStatus.Active ? x.Invoice.Total + x.Debit - x.Credit - x.Paid : 0m,
             x.Invoice.Status.ToString(), x.Invoice.Status == DocumentStatus.Active &&
-            x.Invoice.DueDate < today && x.Invoice.Total > x.Paid)).ToList();
+            x.Invoice.DueDate < today && x.Invoice.Total + x.Debit > x.Paid + x.Credit,
+            x.Debit, x.Credit)).ToList();
         return new PageResult<InvoiceListResponse>(items, total, page, pageSize);
     }
 

@@ -13,6 +13,8 @@ public sealed class Payment
     public string? Reference { get; set; }
     public decimal Amount { get; set; }
     public DocumentStatus Status { get; set; } = DocumentStatus.Active;
+    public DateOnly? CancelledOn { get; set; }
     public DateTime CreatedAtUtc { get; set; } = DateTime.UtcNow;
     public List<PaymentAllocation> Allocations { get; set; } = [];
+    public CheckDetail? CheckDetail { get; set; }
 }

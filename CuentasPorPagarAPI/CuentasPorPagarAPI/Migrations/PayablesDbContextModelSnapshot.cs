@@ -22,6 +22,37 @@ namespace CuentasPorPagarAPI.Migrations
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
+            modelBuilder.Entity("CuentasPorPagarAPI.Models.AdjustmentAllocation", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<decimal>("Amount")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)");
+
+                    b.Property<int>("PurchaseInvoiceId")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("SupplierAdjustmentId")
+                        .HasColumnType("integer");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("PurchaseInvoiceId");
+
+                    b.HasIndex("SupplierAdjustmentId", "PurchaseInvoiceId")
+                        .IsUnique();
+
+                    b.ToTable("AdjustmentAllocations", t =>
+                        {
+                            t.HasCheckConstraint("CK_AdjustmentAllocation_Amount", "\"Amount\" > 0");
+                        });
+                });
+
             modelBuilder.Entity("CuentasPorPagarAPI.Models.AppUser", b =>
                 {
                     b.Property<Guid>("Id")
@@ -58,6 +89,31 @@ namespace CuentasPorPagarAPI.Migrations
                         .IsUnique();
 
                     b.ToTable("Users");
+                });
+
+            modelBuilder.Entity("CuentasPorPagarAPI.Models.CheckDetail", b =>
+                {
+                    b.Property<int>("PaymentId")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("BankName")
+                        .IsRequired()
+                        .HasMaxLength(120)
+                        .HasColumnType("character varying(120)");
+
+                    b.Property<string>("CheckNumber")
+                        .IsRequired()
+                        .HasMaxLength(60)
+                        .HasColumnType("character varying(60)");
+
+                    b.Property<DateOnly?>("ClearedOn")
+                        .HasColumnType("date");
+
+                    b.HasKey("PaymentId");
+
+                    b.HasIndex("BankName", "CheckNumber");
+
+                    b.ToTable("CheckDetails");
                 });
 
             modelBuilder.Entity("CuentasPorPagarAPI.Models.InvoiceLine", b =>
@@ -109,6 +165,9 @@ namespace CuentasPorPagarAPI.Migrations
                     b.Property<decimal>("Amount")
                         .HasPrecision(18, 2)
                         .HasColumnType("numeric(18,2)");
+
+                    b.Property<DateOnly?>("CancelledOn")
+                        .HasColumnType("date");
 
                     b.Property<DateTime>("CreatedAtUtc")
                         .HasColumnType("timestamp with time zone");
@@ -195,6 +254,9 @@ namespace CuentasPorPagarAPI.Migrations
                         .HasMaxLength(80)
                         .HasColumnType("character varying(80)");
 
+                    b.Property<bool>("RequiresCheckDetails")
+                        .HasColumnType("boolean");
+
                     b.HasKey("Id");
 
                     b.HasIndex("Name")
@@ -207,19 +269,22 @@ namespace CuentasPorPagarAPI.Migrations
                         {
                             Id = 1,
                             IsActive = true,
-                            Name = "Efectivo"
+                            Name = "Efectivo",
+                            RequiresCheckDetails = false
                         },
                         new
                         {
                             Id = 2,
                             IsActive = true,
-                            Name = "Transferencia"
+                            Name = "Transferencia",
+                            RequiresCheckDetails = false
                         },
                         new
                         {
                             Id = 3,
                             IsActive = true,
-                            Name = "Cheque"
+                            Name = "Cheque",
+                            RequiresCheckDetails = true
                         });
                 });
 
@@ -230,6 +295,9 @@ namespace CuentasPorPagarAPI.Migrations
                         .HasColumnType("integer");
 
                     NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<DateOnly?>("CancelledOn")
+                        .HasColumnType("date");
 
                     b.Property<DateTime>("CreatedAtUtc")
                         .HasColumnType("timestamp with time zone");
@@ -325,6 +393,103 @@ namespace CuentasPorPagarAPI.Migrations
                     b.ToTable("Suppliers");
                 });
 
+            modelBuilder.Entity("CuentasPorPagarAPI.Models.SupplierAdjustment", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<decimal>("Amount")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)");
+
+                    b.Property<DateOnly?>("CancelledOn")
+                        .HasColumnType("date");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateOnly>("Date")
+                        .HasColumnType("date");
+
+                    b.Property<string>("Description")
+                        .IsRequired()
+                        .HasMaxLength(300)
+                        .HasColumnType("character varying(300)");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("character varying(30)");
+
+                    b.Property<string>("Number")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
+
+                    b.Property<Guid>("RecordedByUserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Series")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("character varying(30)");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<int>("SupplierId")
+                        .HasColumnType("integer");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("RecordedByUserId");
+
+                    b.HasIndex("SupplierId", "Date");
+
+                    b.HasIndex("SupplierId", "Kind", "Series", "Number")
+                        .IsUnique();
+
+                    b.ToTable("SupplierAdjustments", t =>
+                        {
+                            t.HasCheckConstraint("CK_SupplierAdjustment_Amount", "\"Amount\" > 0");
+                        });
+                });
+
+            modelBuilder.Entity("CuentasPorPagarAPI.Models.AdjustmentAllocation", b =>
+                {
+                    b.HasOne("CuentasPorPagarAPI.Models.PurchaseInvoice", "PurchaseInvoice")
+                        .WithMany("AdjustmentAllocations")
+                        .HasForeignKey("PurchaseInvoiceId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("CuentasPorPagarAPI.Models.SupplierAdjustment", "SupplierAdjustment")
+                        .WithMany("Allocations")
+                        .HasForeignKey("SupplierAdjustmentId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("PurchaseInvoice");
+
+                    b.Navigation("SupplierAdjustment");
+                });
+
+            modelBuilder.Entity("CuentasPorPagarAPI.Models.CheckDetail", b =>
+                {
+                    b.HasOne("CuentasPorPagarAPI.Models.Payment", "Payment")
+                        .WithOne("CheckDetail")
+                        .HasForeignKey("CuentasPorPagarAPI.Models.CheckDetail", "PaymentId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Payment");
+                });
+
             modelBuilder.Entity("CuentasPorPagarAPI.Models.InvoiceLine", b =>
                 {
                     b.HasOne("CuentasPorPagarAPI.Models.PurchaseInvoice", "PurchaseInvoice")
@@ -393,13 +558,36 @@ namespace CuentasPorPagarAPI.Migrations
                     b.Navigation("Supplier");
                 });
 
+            modelBuilder.Entity("CuentasPorPagarAPI.Models.SupplierAdjustment", b =>
+                {
+                    b.HasOne("CuentasPorPagarAPI.Models.AppUser", "RecordedByUser")
+                        .WithMany()
+                        .HasForeignKey("RecordedByUserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("CuentasPorPagarAPI.Models.Supplier", "Supplier")
+                        .WithMany("Adjustments")
+                        .HasForeignKey("SupplierId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("RecordedByUser");
+
+                    b.Navigation("Supplier");
+                });
+
             modelBuilder.Entity("CuentasPorPagarAPI.Models.Payment", b =>
                 {
                     b.Navigation("Allocations");
+
+                    b.Navigation("CheckDetail");
                 });
 
             modelBuilder.Entity("CuentasPorPagarAPI.Models.PurchaseInvoice", b =>
                 {
+                    b.Navigation("AdjustmentAllocations");
+
                     b.Navigation("Allocations");
 
                     b.Navigation("Lines");
@@ -407,9 +595,16 @@ namespace CuentasPorPagarAPI.Migrations
 
             modelBuilder.Entity("CuentasPorPagarAPI.Models.Supplier", b =>
                 {
+                    b.Navigation("Adjustments");
+
                     b.Navigation("Invoices");
 
                     b.Navigation("Payments");
+                });
+
+            modelBuilder.Entity("CuentasPorPagarAPI.Models.SupplierAdjustment", b =>
+                {
+                    b.Navigation("Allocations");
                 });
 #pragma warning restore 612, 618
         }

@@ -13,4 +13,5 @@ public sealed class Supplier
     public DateTime CreatedAtUtc { get; set; } = DateTime.UtcNow;
     public List<PurchaseInvoice> Invoices { get; set; } = [];
     public List<Payment> Payments { get; set; } = [];
+    public List<SupplierAdjustment> Adjustments { get; set; } = [];
 }

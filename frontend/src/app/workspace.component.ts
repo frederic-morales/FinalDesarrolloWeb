@@ -3,14 +3,15 @@ import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router, RouterLink, RouterLinkActive } from '@angular/router';
 import { ApiService, apiError } from './api.service';
 import { AuthService, isUnauthorized } from './auth.service';
-import { Allocation, Dashboard, Invoice, InvoiceInput, Payment, PaymentInput, PaymentMethod, Statement, Supplier, SupplierInput, User } from './models';
+import { Adjustment, AdjustmentInput, Allocation, Dashboard, Invoice, InvoiceInput, Payment, PaymentInput, PaymentMethod, Statement, Supplier, SupplierBalance, SupplierInput, User } from './models';
 
 function localDate(date = new Date()): string {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
 }
 const blankSupplier = (): SupplierInput => ({ name: '', nit: null, contactName: null, email: null, phone: null, address: null });
 const blankInvoice = (): InvoiceInput => ({ supplierId: 0, series: '', number: '', issueDate: localDate(), dueDate: localDate(), lines: [{ description: '', quantity: 1, unitPrice: 0 }] });
-const blankPayment = (): PaymentInput => ({ supplierId: 0, paymentMethodId: 0, date: localDate(), reference: '', amount: 0, allocations: [] });
+const blankPayment = (): PaymentInput => ({ supplierId: 0, paymentMethodId: 0, date: localDate(), reference: '', amount: 0, allocations: [], check: null });
+const blankAdjustment = (): AdjustmentInput => ({ supplierId: 0, kind: 'CreditNote', series: '', number: '', date: localDate(), description: '', amount: 0, allocations: [] });
 
 @Component({
   selector: 'app-workspace',
@@ -27,6 +28,7 @@ export class WorkspaceComponent implements OnInit {
     { key: 'proveedores', label: 'Proveedores', icon: '▤' },
     { key: 'facturas', label: 'Facturas', icon: '▧' },
     { key: 'pagos', label: 'Pagos', icon: '↗' },
+    { key: 'movimientos', label: 'Notas y ajustes', icon: '⇄' },
     { key: 'reportes', label: 'Reportes', icon: '▥' },
     { key: 'configuracion', label: 'Configuración', icon: '⚙' }
   ];
@@ -38,9 +40,11 @@ export class WorkspaceComponent implements OnInit {
   suppliers: Supplier[] = [];
   invoices: Invoice[] = [];
   payments: Payment[] = [];
+  adjustments: Adjustment[] = [];
   methods: PaymentMethod[] = [];
   users: User[] = [];
   payableRows: Invoice[] = [];
+  supplierBalances: SupplierBalance[] = [];
   statement: Statement | null = null;
   selectedPayment: Payment | null = null;
   supplierSearch = '';
@@ -51,9 +55,14 @@ export class WorkspaceComponent implements OnInit {
   editingInvoiceId: number | null = null;
   showInvoiceForm = false;
   paymentForm = blankPayment();
+  adjustmentForm = blankAdjustment();
   allocations: Record<number, number> = {};
+  adjustmentAllocations: Record<number, number> = {};
   showPaymentForm = false;
+  showAdjustmentForm = false;
+  selectedAdjustment: Adjustment | null = null;
   methodName = '';
+  methodRequiresCheckDetails = false;
   editingMethodId: number | null = null;
   userName = '';
   userPassword = '';
@@ -98,6 +107,12 @@ export class WorkspaceComponent implements OnInit {
           this.api.all<Payment>('/payments'), this.api.get<PaymentMethod[]>('/payment-methods')
         ]);
       }
+      if (this.section === 'movimientos') {
+        [this.suppliers, this.invoices, this.adjustments] = await Promise.all([
+          this.api.all<Supplier>('/suppliers'), this.api.all<Invoice>('/invoices'),
+          this.api.all<Adjustment>('/adjustments')
+        ]);
+      }
       if (this.section === 'reportes') {
         this.suppliers = await this.api.all<Supplier>('/suppliers');
         await this.loadPayables();
@@ -126,6 +141,18 @@ export class WorkspaceComponent implements OnInit {
   }
   get invoiceTotal(): number { return this.invoiceForm.lines.reduce((sum, line) => sum + Number(line.quantity || 0) * Number(line.unitPrice || 0), 0); }
   get paymentTotal(): number { return Object.values(this.allocations).reduce((sum, value) => sum + Number(value || 0), 0); }
+  get adjustmentTotal(): number { return Object.values(this.adjustmentAllocations).reduce((sum, value) => sum + Number(value || 0), 0); }
+  get selectedMethod(): PaymentMethod | undefined { return this.methods.find(x => x.id === Number(this.paymentForm.paymentMethodId)); }
+  get isCreditAdjustment(): boolean { return this.adjustmentForm.kind === 'CreditNote' || this.adjustmentForm.kind === 'OtherCredit'; }
+  get adjustmentInvoices(): Invoice[] {
+    return this.invoices.filter(x => x.supplierId === Number(this.adjustmentForm.supplierId) &&
+      x.status === 'Active' && x.issueDate <= this.adjustmentForm.date &&
+      (!this.isCreditAdjustment || x.balance > 0));
+  }
+  adjustmentLabel(kind: Adjustment['kind']): string {
+    return ({ CreditNote: 'Nota de crédito', DebitNote: 'Nota de débito',
+      OtherCredit: 'Otro abono', OtherCharge: 'Otro cargo' })[kind];
+  }
   get payableInvoices(): Invoice[] {
     return this.invoices.filter(x => x.supplierId === Number(this.paymentForm.supplierId) && x.status === 'Active' && x.balance > 0 && x.issueDate <= this.paymentForm.date);
   }
@@ -186,17 +213,24 @@ export class WorkspaceComponent implements OnInit {
   }
 
   newPayment(): void { this.paymentForm = blankPayment(); this.allocations = {}; this.showPaymentForm = true; }
+  onPaymentMethodChanged(): void {
+    this.paymentForm.check = this.selectedMethod?.requiresCheckDetails
+      ? { bankName: '', checkNumber: '', clearedOn: null } : null;
+  }
   async savePayment(): Promise<void> {
     const allocations: Allocation[] = Object.entries(this.allocations)
       .filter(([, amount]) => Number(amount) > 0)
       .map(([invoiceId, amount]) => ({ invoiceId: Number(invoiceId), amount: Number(amount) }));
     const amount = Math.round(this.paymentTotal * 100) / 100;
     if (!this.paymentForm.supplierId || !this.paymentForm.paymentMethodId || !this.paymentForm.date || allocations.length === 0 ||
-        allocations.some(a => !this.payableInvoices.some(i => i.id === a.invoiceId && a.amount <= i.balance)) || amount <= 0) {
+        allocations.some(a => !this.payableInvoices.some(i => i.id === a.invoiceId && a.amount <= i.balance)) || amount <= 0 ||
+        (this.selectedMethod?.requiresCheckDetails &&
+          (!this.paymentForm.check?.bankName.trim() || !this.paymentForm.check?.checkNumber.trim()))) {
       this.error = 'Selecciona proveedor, método y al menos una factura. Cada abono debe respetar su saldo.'; return;
     }
     await this.run(async () => {
-      await this.api.post('/payments', { ...this.paymentForm, amount, allocations });
+      await this.api.post('/payments', { ...this.paymentForm, amount, allocations,
+        check: this.selectedMethod?.requiresCheckDetails ? this.paymentForm.check : null });
       this.showPaymentForm = false;
       [this.payments, this.invoices] = await Promise.all([
         this.api.all<Payment>('/payments'), this.api.all<Invoice>('/invoices')
@@ -217,10 +251,52 @@ export class WorkspaceComponent implements OnInit {
     }, 'Pago anulado.');
   }
 
+  newAdjustment(): void {
+    this.adjustmentForm = blankAdjustment();
+    this.adjustmentAllocations = {};
+    this.showAdjustmentForm = true;
+  }
+  async saveAdjustment(): Promise<void> {
+    const f = this.adjustmentForm;
+    const allocations: Allocation[] = Object.entries(this.adjustmentAllocations)
+      .filter(([, amount]) => Number(amount) > 0)
+      .map(([invoiceId, amount]) => ({ invoiceId: Number(invoiceId), amount: Number(amount) }));
+    const amount = Math.round(this.adjustmentTotal * 100) / 100;
+    if (!f.supplierId || !f.series.trim() || !f.number.trim() || !f.date || !f.description.trim() ||
+        allocations.length === 0 || amount <= 0 ||
+        allocations.some(a => !this.adjustmentInvoices.some(i => i.id === a.invoiceId &&
+          (!this.isCreditAdjustment || a.amount <= i.balance)))) {
+      this.error = 'Revisa proveedor, documento y aplicaciones. Los abonos no pueden superar el saldo.'; return;
+    }
+    await this.run(async () => {
+      await this.api.post('/adjustments', { ...f, amount, allocations });
+      this.showAdjustmentForm = false;
+      [this.adjustments, this.invoices] = await Promise.all([
+        this.api.all<Adjustment>('/adjustments'), this.api.all<Invoice>('/invoices')
+      ]);
+    }, 'Movimiento registrado.');
+  }
+  async viewAdjustment(a: Adjustment): Promise<void> {
+    await this.run(async () => { this.selectedAdjustment = await this.api.get<Adjustment>(`/adjustments/${a.id}`); });
+  }
+  async cancelAdjustment(a: Adjustment): Promise<void> {
+    if (!confirm(`¿Anular ${this.adjustmentLabel(a.kind)} ${a.series}-${a.number}?`)) return;
+    await this.run(async () => {
+      await this.api.post(`/adjustments/${a.id}/cancel`, {});
+      this.selectedAdjustment = null;
+      [this.adjustments, this.invoices] = await Promise.all([
+        this.api.all<Adjustment>('/adjustments'), this.api.all<Invoice>('/invoices')
+      ]);
+    }, 'Movimiento anulado.');
+  }
+
   async loadPayables(): Promise<void> {
-    this.payableRows = await this.api.all<Invoice>('/reports/payables', {
-      asOf: this.reportAsOf, supplierId: this.reportSupplierId || null, overdueOnly: this.reportOverdueOnly
-    });
+    [this.payableRows, this.supplierBalances] = await Promise.all([
+      this.api.all<Invoice>('/reports/payables', {
+        asOf: this.reportAsOf, supplierId: this.reportSupplierId || null, overdueOnly: this.reportOverdueOnly
+      }),
+      this.api.get<SupplierBalance[]>('/reports/supplier-balances', { asOf: this.reportAsOf })
+    ]);
   }
   async searchPayables(): Promise<void> { await this.run(() => this.loadPayables()); }
   async loadStatement(): Promise<void> {
@@ -246,13 +322,18 @@ export class WorkspaceComponent implements OnInit {
     });
   }
 
-  editMethod(m: PaymentMethod): void { this.methodName = m.name; this.editingMethodId = m.id; }
+  editMethod(m: PaymentMethod): void {
+    this.methodName = m.name;
+    this.methodRequiresCheckDetails = m.requiresCheckDetails;
+    this.editingMethodId = m.id;
+  }
   async saveMethod(): Promise<void> {
     if (!this.methodName.trim()) { this.error = 'Escribe el nombre del método.'; return; }
     await this.run(async () => {
-      if (this.editingMethodId) await this.api.put(`/payment-methods/${this.editingMethodId}`, { name: this.methodName });
-      else await this.api.post('/payment-methods', { name: this.methodName });
-      this.methodName = ''; this.editingMethodId = null;
+      const body = { name: this.methodName, requiresCheckDetails: this.methodRequiresCheckDetails };
+      if (this.editingMethodId) await this.api.put(`/payment-methods/${this.editingMethodId}`, body);
+      else await this.api.post('/payment-methods', body);
+      this.methodName = ''; this.methodRequiresCheckDetails = false; this.editingMethodId = null;
       this.methods = await this.api.get<PaymentMethod[]>('/payment-methods');
     }, 'Método guardado.');
   }

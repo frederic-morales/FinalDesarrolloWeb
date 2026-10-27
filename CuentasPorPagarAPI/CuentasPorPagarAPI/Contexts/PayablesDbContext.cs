@@ -12,6 +12,9 @@ public sealed class PayablesDbContext(DbContextOptions<PayablesDbContext> option
     public DbSet<InvoiceLine> InvoiceLines => Set<InvoiceLine>();
     public DbSet<Payment> Payments => Set<Payment>();
     public DbSet<PaymentAllocation> PaymentAllocations => Set<PaymentAllocation>();
+    public DbSet<CheckDetail> CheckDetails => Set<CheckDetail>();
+    public DbSet<SupplierAdjustment> SupplierAdjustments => Set<SupplierAdjustment>();
+    public DbSet<AdjustmentAllocation> AdjustmentAllocations => Set<AdjustmentAllocation>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -45,7 +48,7 @@ public sealed class PayablesDbContext(DbContextOptions<PayablesDbContext> option
             entity.HasData(
                 new PaymentMethod { Id = 1, Name = "Efectivo" },
                 new PaymentMethod { Id = 2, Name = "Transferencia" },
-                new PaymentMethod { Id = 3, Name = "Cheque" });
+                new PaymentMethod { Id = 3, Name = "Cheque", RequiresCheckDetails = true });
         });
 
         modelBuilder.Entity<PurchaseInvoice>(entity =>
@@ -94,6 +97,47 @@ public sealed class PayablesDbContext(DbContextOptions<PayablesDbContext> option
             entity.HasIndex(x => x.PurchaseInvoiceId);
             entity.HasOne(x => x.Payment).WithMany(x => x.Allocations).HasForeignKey(x => x.PaymentId).OnDelete(DeleteBehavior.Restrict);
             entity.HasOne(x => x.PurchaseInvoice).WithMany(x => x.Allocations).HasForeignKey(x => x.PurchaseInvoiceId).OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<CheckDetail>(entity =>
+        {
+            entity.HasKey(x => x.PaymentId);
+            entity.Property(x => x.BankName).HasMaxLength(120).IsRequired();
+            entity.Property(x => x.CheckNumber).HasMaxLength(60).IsRequired();
+            entity.HasIndex(x => new { x.BankName, x.CheckNumber });
+            entity.HasOne(x => x.Payment).WithOne(x => x.CheckDetail)
+                .HasForeignKey<CheckDetail>(x => x.PaymentId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<SupplierAdjustment>(entity =>
+        {
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.Kind).HasConversion<string>().HasMaxLength(30);
+            entity.Property(x => x.Series).HasMaxLength(30).IsRequired();
+            entity.Property(x => x.Number).HasMaxLength(50).IsRequired();
+            entity.Property(x => x.Description).HasMaxLength(300).IsRequired();
+            entity.Property(x => x.Amount).HasPrecision(18, 2);
+            entity.Property(x => x.Status).HasConversion<string>().HasMaxLength(20);
+            entity.HasIndex(x => new { x.SupplierId, x.Kind, x.Series, x.Number }).IsUnique();
+            entity.HasIndex(x => new { x.SupplierId, x.Date });
+            entity.ToTable(t => t.HasCheckConstraint("CK_SupplierAdjustment_Amount", "\"Amount\" > 0"));
+            entity.HasOne(x => x.Supplier).WithMany(x => x.Adjustments)
+                .HasForeignKey(x => x.SupplierId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(x => x.RecordedByUser).WithMany()
+                .HasForeignKey(x => x.RecordedByUserId).OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<AdjustmentAllocation>(entity =>
+        {
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.Amount).HasPrecision(18, 2);
+            entity.HasIndex(x => new { x.SupplierAdjustmentId, x.PurchaseInvoiceId }).IsUnique();
+            entity.HasIndex(x => x.PurchaseInvoiceId);
+            entity.ToTable(t => t.HasCheckConstraint("CK_AdjustmentAllocation_Amount", "\"Amount\" > 0"));
+            entity.HasOne(x => x.SupplierAdjustment).WithMany(x => x.Allocations)
+                .HasForeignKey(x => x.SupplierAdjustmentId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(x => x.PurchaseInvoice).WithMany(x => x.AdjustmentAllocations)
+                .HasForeignKey(x => x.PurchaseInvoiceId).OnDelete(DeleteBehavior.Restrict);
         });
     }
 }

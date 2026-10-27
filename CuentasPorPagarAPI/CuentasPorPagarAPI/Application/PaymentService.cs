@@ -15,8 +15,20 @@ public sealed class PaymentService(PayablesDbContext db)
 
         if (!await db.Suppliers.AnyAsync(x => x.Id == request.SupplierId && x.IsActive, cancellationToken))
             throw new ApiException(400, "El proveedor no existe o está inactivo.");
-        if (!await db.PaymentMethods.AnyAsync(x => x.Id == request.PaymentMethodId && x.IsActive, cancellationToken))
-            throw new ApiException(400, "El método de pago no existe o está inactivo.");
+        var method = await db.PaymentMethods.AsNoTracking()
+            .SingleOrDefaultAsync(x => x.Id == request.PaymentMethodId && x.IsActive, cancellationToken)
+            ?? throw new ApiException(400, "El método de pago no existe o está inactivo.");
+        if (method.RequiresCheckDetails)
+        {
+            if (request.Check is null || string.IsNullOrWhiteSpace(request.Check.BankName) ||
+                string.IsNullOrWhiteSpace(request.Check.CheckNumber) ||
+                request.Check.BankName.Trim().Length > 120 || request.Check.CheckNumber.Trim().Length > 60 ||
+                request.Check.ClearedOn < request.Date ||
+                request.Check.ClearedOn > DateOnly.FromDateTime(DateTime.UtcNow.AddHours(-6)))
+                throw new ApiException(400, "El cheque requiere banco, número y fecha de cobro válida si se indica.");
+        }
+        else if (request.Check is not null)
+            throw new ApiException(400, "Solo un método de cheque puede incluir datos de cheque.");
 
         var ids = request.Allocations.Select(x => x.InvoiceId).ToArray();
         var invoices = await db.PurchaseInvoices.Where(x => ids.Contains(x.Id)).ToListAsync(cancellationToken);
@@ -24,16 +36,22 @@ public sealed class PaymentService(PayablesDbContext db)
             x.Status != DocumentStatus.Active || x.IssueDate > request.Date))
             throw new ApiException(400, "Todas las facturas deben estar activas, pertenecer al proveedor y existir en la fecha del pago.");
 
-        var paid = await db.PaymentAllocations.AsNoTracking()
-            .Where(x => ids.Contains(x.PurchaseInvoiceId) && x.Payment.Status == DocumentStatus.Active)
-            .GroupBy(x => x.PurchaseInvoiceId)
-            .Select(x => new { InvoiceId = x.Key, Amount = x.Sum(a => a.Amount) })
-            .ToDictionaryAsync(x => x.InvoiceId, x => x.Amount, cancellationToken);
+        var balances = await PayableQuery.At(db, DateOnly.FromDateTime(DateTime.UtcNow.AddHours(-6)))
+            .Where(x => ids.Contains(x.Invoice.Id))
+            .Select(x => new { x.Invoice.Id, x.Invoice.Total, x.Paid, x.Debit, x.Credit })
+            .ToDictionaryAsync(x => x.Id, cancellationToken);
+        var balancesAtPaymentDate = await PayableQuery.At(db, request.Date)
+            .Where(x => ids.Contains(x.Invoice.Id))
+            .Select(x => new { x.Invoice.Id, x.Invoice.Total, x.Paid, x.Debit, x.Credit })
+            .ToDictionaryAsync(x => x.Id, cancellationToken);
 
         foreach (var allocation in request.Allocations)
         {
             var invoice = invoices.Single(x => x.Id == allocation.InvoiceId);
-            if (allocation.Amount > invoice.Total - paid.GetValueOrDefault(invoice.Id))
+            var amounts = balances[invoice.Id];
+            var atDate = balancesAtPaymentDate[invoice.Id];
+            if (allocation.Amount > amounts.Total + amounts.Debit - amounts.Credit - amounts.Paid ||
+                allocation.Amount > atDate.Total + atDate.Debit - atDate.Credit - atDate.Paid)
                 throw new ApiException(409, $"El abono supera el saldo de la factura {invoice.Series}-{invoice.Number}.");
         }
 
@@ -45,6 +63,12 @@ public sealed class PaymentService(PayablesDbContext db)
             Date = request.Date,
             Reference = string.IsNullOrWhiteSpace(request.Reference) ? null : request.Reference.Trim(),
             Amount = request.Amount,
+            CheckDetail = request.Check is null ? null : new CheckDetail
+            {
+                BankName = request.Check.BankName.Trim(),
+                CheckNumber = request.Check.CheckNumber.Trim(),
+                ClearedOn = request.Check.ClearedOn
+            },
             Allocations = request.Allocations.Select(x => new PaymentAllocation
             {
                 PurchaseInvoiceId = x.InvoiceId, Amount = x.Amount
@@ -63,6 +87,7 @@ public sealed class PaymentService(PayablesDbContext db)
             ?? throw new ApiException(404, "Pago no encontrado.");
         if (payment.Status == DocumentStatus.Cancelled) return;
         payment.Status = DocumentStatus.Cancelled;
+        payment.CancelledOn = DateOnly.FromDateTime(DateTime.UtcNow.AddHours(-6));
         await db.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
     }
@@ -70,14 +95,17 @@ public sealed class PaymentService(PayablesDbContext db)
     public async Task<PaymentResponse?> GetAsync(int id, CancellationToken cancellationToken)
     {
         var payment = await db.Payments.AsNoTracking().Include(x => x.Supplier)
-            .Include(x => x.PaymentMethod).Include(x => x.Allocations).ThenInclude(x => x.PurchaseInvoice)
+            .Include(x => x.PaymentMethod).Include(x => x.CheckDetail)
+            .Include(x => x.Allocations).ThenInclude(x => x.PurchaseInvoice)
             .SingleOrDefaultAsync(x => x.Id == id, cancellationToken);
         if (payment is null) return null;
         return new PaymentResponse(payment.Id, payment.SupplierId, payment.Supplier.Name,
             payment.PaymentMethodId, payment.PaymentMethod.Name, payment.Date, payment.Reference,
             payment.Amount, payment.Status.ToString(), payment.Allocations.OrderBy(x => x.Id)
                 .Select(x => new PaymentAllocationResponse(x.PurchaseInvoiceId,
-                    $"{x.PurchaseInvoice.Series}-{x.PurchaseInvoice.Number}", x.Amount)).ToList());
+                    $"{x.PurchaseInvoice.Series}-{x.PurchaseInvoice.Number}", x.Amount)).ToList(),
+            payment.CheckDetail is null ? null : new CheckDetailResponse(
+                payment.CheckDetail.BankName, payment.CheckDetail.CheckNumber, payment.CheckDetail.ClearedOn));
     }
 
     public async Task<PageResult<PaymentListResponse>> ListAsync(

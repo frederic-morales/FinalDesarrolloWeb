@@ -19,7 +19,7 @@ public sealed class PaymentMethodsController(PayablesDbContext db) : ControllerB
         var query = db.PaymentMethods.AsNoTracking();
         if (activeOnly) query = query.Where(x => x.IsActive);
         return Ok(await query.OrderBy(x => x.Name)
-            .Select(x => new PaymentMethodResponse(x.Id, x.Name, x.IsActive))
+            .Select(x => new PaymentMethodResponse(x.Id, x.Name, x.IsActive, x.RequiresCheckDetails))
             .ToListAsync(cancellationToken));
     }
 
@@ -27,7 +27,7 @@ public sealed class PaymentMethodsController(PayablesDbContext db) : ControllerB
     public async Task<ActionResult<PaymentMethodResponse>> Get(int id, CancellationToken cancellationToken)
     {
         var method = await db.PaymentMethods.AsNoTracking().Where(x => x.Id == id)
-            .Select(x => new PaymentMethodResponse(x.Id, x.Name, x.IsActive))
+            .Select(x => new PaymentMethodResponse(x.Id, x.Name, x.IsActive, x.RequiresCheckDetails))
             .SingleOrDefaultAsync(cancellationToken);
         return method is null ? NotFound() : Ok(method);
     }
@@ -39,10 +39,10 @@ public sealed class PaymentMethodsController(PayablesDbContext db) : ControllerB
         var name = request.Name.Trim();
         if (name.Length == 0) return BadRequest("El nombre es obligatorio.");
         if (await db.PaymentMethods.AnyAsync(x => x.Name == name, cancellationToken)) return Conflict("El método ya existe.");
-        var method = new PaymentMethod { Name = name };
+        var method = new PaymentMethod { Name = name, RequiresCheckDetails = request.RequiresCheckDetails };
         db.PaymentMethods.Add(method);
         await db.SaveChangesAsync(cancellationToken);
-        return CreatedAtAction(nameof(Get), new { id = method.Id }, new PaymentMethodResponse(method.Id, method.Name, method.IsActive));
+        return CreatedAtAction(nameof(Get), new { id = method.Id }, new PaymentMethodResponse(method.Id, method.Name, method.IsActive, method.RequiresCheckDetails));
     }
 
     [HttpPut("{id:int}")]
@@ -55,8 +55,9 @@ public sealed class PaymentMethodsController(PayablesDbContext db) : ControllerB
         if (name.Length == 0) return BadRequest("El nombre es obligatorio.");
         if (await db.PaymentMethods.AnyAsync(x => x.Id != id && x.Name == name, cancellationToken)) return Conflict("El método ya existe.");
         method.Name = name;
+        method.RequiresCheckDetails = request.RequiresCheckDetails;
         await db.SaveChangesAsync(cancellationToken);
-        return Ok(new PaymentMethodResponse(method.Id, method.Name, method.IsActive));
+        return Ok(new PaymentMethodResponse(method.Id, method.Name, method.IsActive, method.RequiresCheckDetails));
     }
 
     [HttpPut("{id:int}/status")]

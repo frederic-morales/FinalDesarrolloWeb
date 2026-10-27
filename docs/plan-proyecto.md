@@ -141,7 +141,7 @@ erDiagram
     USUARIO ||--o{ PAGO : registra
 ```
 
-Diagrama de clases conceptual (las clases finales podrán usar nombres C# y tipos adicionales):
+Diagrama de clases conceptual del plan inicial (el [diagrama de las clases implementadas](../DIAGRAMA_CLASES.md) está en la raíz del proyecto):
 
 ```mermaid
 classDiagram
@@ -240,3 +240,13 @@ El hito principal es un recorrido demostrable: iniciar sesión → crear proveed
 - [Licencia de Docker Desktop para educación](https://docs.docker.com/subscription-billing/desktop-license).
 - [Azure Static Web Apps para Angular](https://learn.microsoft.com/en-us/azure/static-web-apps/deploy-angular) y [App Service para ASP.NET Core con plan F1](https://learn.microsoft.com/en-us/azure/app-service/quickstart-dotnetcore).
 - [Conexión SQL Server/Azure SQL en DBeaver](https://dbeaver.com/docs/dbeaver/Database-driver-Microsoft-SQL-Server/).
+
+## 11. Ampliación tras la revisión del catedrático
+
+El plan anterior refleja la primera versión. La implementación actual añade un módulo de notas de crédito, notas de débito y otros cargos o abonos. Cada documento se aplica por completo a una o más facturas del mismo proveedor mediante `AdjustmentAllocation`. La relación muchos a muchos entre pagos y facturas ya existía mediante `PaymentAllocation`. Los pagos con método de cheque registran banco, número y fecha de cobro opcional.
+
+El saldo de cada factura activa se calcula como `total + débitos − créditos − pagos`. El estado de cuenta une facturas, pagos, notas y contramovimientos fechados; el reporte `/reports/supplier-balances` agrupa cuánto se debe a cada proveedor a una fecha. La interfaz Angular ofrece formularios de notas y cheques y muestra el balance agrupado. El [diagrama de clases vigente](../DIAGRAMA_CLASES.md) y el [contrato de la API](api.md) documentan estas funcionalidades.
+
+**Reglas adoptadas:** importes en quetzales con dos decimales; pagos y notas se aplican por completo a facturas existentes; no se permiten créditos que dejen una factura con saldo negativo; solo el Administrador puede anular pagos y ajustes. Las anulaciones nuevas se registran en la fecha local de Guatemala y producen un contramovimiento. Esta versión no gestiona anticipos ni créditos sin aplicar. Los documentos anulados antes de la migración carecen de fecha histórica de anulación.
+
+La verificación repetible `scripts/verify-movements.ps1` crea una base PostgreSQL temporal, aplica migraciones, registra una factura, notas y un cheque, compara los saldos y comprueba una anulación con corte histórico; elimina esa base al finalizar. Antes de la entrega deben completar la evidencia del video y el porcentaje de participación de cada integrante.

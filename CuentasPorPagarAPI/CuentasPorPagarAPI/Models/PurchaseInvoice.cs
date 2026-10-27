@@ -11,7 +11,9 @@ public sealed class PurchaseInvoice
     public DateOnly DueDate { get; set; }
     public decimal Total { get; set; }
     public DocumentStatus Status { get; set; } = DocumentStatus.Active;
+    public DateOnly? CancelledOn { get; set; }
     public DateTime CreatedAtUtc { get; set; } = DateTime.UtcNow;
     public List<InvoiceLine> Lines { get; set; } = [];
     public List<PaymentAllocation> Allocations { get; set; } = [];
+    public List<AdjustmentAllocation> AdjustmentAllocations { get; set; } = [];
 }

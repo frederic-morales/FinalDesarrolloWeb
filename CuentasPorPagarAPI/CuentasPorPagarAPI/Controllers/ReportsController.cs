@@ -22,6 +22,12 @@ public sealed class ReportsController(ReportService reports) : ControllerBase
         Ok(await reports.PayablesAsync(asOf ?? DateOnly.FromDateTime(DateTime.UtcNow.AddHours(-6)),
             supplierId, overdueOnly, page, pageSize, cancellationToken));
 
+    [HttpGet("supplier-balances")]
+    public async Task<ActionResult<IReadOnlyList<SupplierBalanceResponse>>> SupplierBalances(
+        [FromQuery] DateOnly? asOf, CancellationToken cancellationToken) =>
+        Ok(await reports.SupplierBalancesAsync(
+            asOf ?? DateOnly.FromDateTime(DateTime.UtcNow.AddHours(-6)), cancellationToken));
+
     [HttpGet("suppliers/{supplierId:int}/statement")]
     public async Task<ActionResult<StatementResponse>> Statement(
         int supplierId, [FromQuery] DateOnly from, [FromQuery] DateOnly to, CancellationToken cancellationToken) =>

@@ -13,6 +13,7 @@ Aplicación web del curso **Desarrollo Web** para registrar proveedores, factura
 7. [Frontend: estructura y código](#frontend-estructura-y-código)
 8. [Ejecutar Angular](#ejecutar-angular)
 9. [Publicar en la web](docs/despliegue.md)
+10. [Diagrama de clases implementadas](DIAGRAMA_CLASES.md)
 
 ## Cómo funciona el sistema
 
@@ -62,7 +63,7 @@ La solución está en [`CuentasPorPagarAPI/CuentasPorPagarAPI.slnx`](CuentasPorP
 
 ### `PayablesDbContext` y code-first
 
-[`Contexts/PayablesDbContext.cs`](CuentasPorPagarAPI/CuentasPorPagarAPI/Contexts/PayablesDbContext.cs) **hereda de `DbContext`**. Sus propiedades `DbSet<T>` representan usuarios, proveedores, métodos de pago, facturas, líneas, pagos y aplicaciones de pagos. En `OnModelCreating` se definen claves, longitudes, precisión decimal, relaciones, índices y restricciones de SQL. Por ejemplo, el NIT de proveedor es único cuando existe, una factura no puede repetir serie y número dentro del mismo proveedor, y los importes guardados deben ser positivos.
+[`Contexts/PayablesDbContext.cs`](CuentasPorPagarAPI/CuentasPorPagarAPI/Contexts/PayablesDbContext.cs) **hereda de `DbContext`**. Sus propiedades `DbSet<T>` representan usuarios, proveedores, métodos de pago, facturas, líneas, pagos, cheques, notas y aplicaciones a facturas. En `OnModelCreating` se definen claves, longitudes, precisión decimal, relaciones, índices y restricciones de SQL. El [diagrama de clases](DIAGRAMA_CLASES.md) muestra las relaciones implementadas.
 
 [`Contexts/PayablesDbContextFactory.cs`](CuentasPorPagarAPI/CuentasPorPagarAPI/Contexts/PayablesDbContextFactory.cs) crea el mismo contexto para las herramientas de diseño de EF Core. Lee la conexión desde User Secrets o variables de entorno para que `dotnet ef` pueda generar y aplicar migraciones.
 
@@ -75,13 +76,17 @@ La solución está en [`CuentasPorPagarAPI/CuentasPorPagarAPI.slnx`](CuentasPorP
 | [`InvoiceLine`](CuentasPorPagarAPI/CuentasPorPagarAPI/Models/InvoiceLine.cs) | Concepto de una factura: descripción, cantidad, precio unitario y subtotal. |
 | [`Payment`](CuentasPorPagarAPI/CuentasPorPagarAPI/Models/Payment.cs) | Pago asociado a proveedor, método y usuario que lo registró. |
 | [`PaymentAllocation`](CuentasPorPagarAPI/CuentasPorPagarAPI/Models/PaymentAllocation.cs) | Parte de un pago aplicada a una factura. Permite pagar varias facturas con un movimiento. |
+| [`CheckDetail`](CuentasPorPagarAPI/CuentasPorPagarAPI/Models/CheckDetail.cs) | Banco, número y fecha de cobro opcional de un pago con método de cheque. |
+| [`SupplierAdjustment`](CuentasPorPagarAPI/CuentasPorPagarAPI/Models/SupplierAdjustment.cs) | Nota de crédito, nota de débito, otro cargo u otro abono de un proveedor. |
+| [`AdjustmentAllocation`](CuentasPorPagarAPI/CuentasPorPagarAPI/Models/AdjustmentAllocation.cs) | Importe de una nota o ajuste aplicado a una factura. |
 | [`DocumentStatus`](CuentasPorPagarAPI/CuentasPorPagarAPI/Models/DocumentStatus.cs) y [`Roles`](CuentasPorPagarAPI/CuentasPorPagarAPI/Models/Roles.cs) | Estados `Active`/`Cancelled` y roles `Administrador`/`Operador` usados en reglas y permisos. |
 
-El **saldo de una factura activa** se calcula como `total − suma de aplicaciones de pagos activos`. No se guarda una segunda columna de saldo. Si un pago se anula, sus aplicaciones quedan como historial, pero dejan de descontar saldo; si una factura se anula, su saldo mostrado pasa a cero.
+El **saldo de una factura activa** se calcula como `total + débitos − créditos − pagos`. Las notas y los pagos se aplican por completo a facturas del mismo proveedor; no se guarda una segunda columna de saldo. Las anulaciones nuevas registran su fecha para que un corte previo conserve el movimiento original. Los documentos anulados antes de la migración no tienen fecha histórica de anulación.
 
 #### Migraciones existentes
 
 - `20261026143248_InitialPostgres` crea tablas, relaciones, índices, restricciones, métodos de pago iniciales y el sello de seguridad de usuarios. Sustituye las migraciones antiguas de SQL Server porque se inicia una base PostgreSQL vacía.
+- `20261027050936_ExpandMovements` añade notas y aplicaciones, detalles de cheques y fecha de anulación a facturas y pagos. Conserva los registros existentes.
 - `PayablesDbContextModelSnapshot.cs` describe el modelo vigente que EF compara al crear la siguiente migración.
 
 El historial de migraciones aplicadas se guarda en `__EFMigrationsHistory` de cada base. Para cambiar el esquema, modifica el modelo o `OnModelCreating` y, desde la carpeta del proyecto .NET, ejecuta:
@@ -97,9 +102,11 @@ Revisa el código generado antes de aplicarlo, especialmente si cambia o elimina
 
 | Servicio | Lógica principal |
 | --- | --- |
-| [`InvoiceService.cs`](CuentasPorPagarAPI/CuentasPorPagarAPI/Application/InvoiceService.cs) | Valida proveedor activo, fechas, serie/número únicos y al menos una línea. Calcula subtotal de cada línea con redondeo a dos decimales y obtiene el total. Consulta pagos activos para calcular `paid` y `balance`. Impide editar o anular una factura con pagos activos; usa transacción serializable al editar o anular. |
-| [`PaymentService.cs`](CuentasPorPagarAPI/CuentasPorPagarAPI/Application/PaymentService.cs) | Valida proveedor y método activos, fecha de pago, importes con dos decimales y facturas activas del mismo proveedor. La suma de aplicaciones debe ser igual al pago; ninguna puede superar el saldo de su factura. Crea y anula pagos con transacción serializable. |
-| [`ReportService.cs`](CuentasPorPagarAPI/CuentasPorPagarAPI/Application/ReportService.cs) | Calcula indicadores del resumen, cuentas por pagar a una fecha de corte y estado de cuenta por proveedor. Para saldos históricos toma facturas emitidas y pagos activos realizados hasta la fecha solicitada. El estado de cuenta muestra saldo inicial, cargos, abonos y saldo acumulado. |
+| [`InvoiceService.cs`](CuentasPorPagarAPI/CuentasPorPagarAPI/Application/InvoiceService.cs) | Valida proveedor activo, fechas, serie/número únicos y al menos una línea. Calcula el total, pagos, débitos, créditos y saldo. Impide editar una factura que haya tenido movimientos y anularla mientras tenga aplicaciones activas. |
+| [`PaymentService.cs`](CuentasPorPagarAPI/CuentasPorPagarAPI/Application/PaymentService.cs) | Valida proveedor, método, fecha, importes y saldo disponible después de notas. Exige banco y número si el método requiere cheque. Crea y anula pagos con transacción serializable. |
+| [`AdjustmentService.cs`](CuentasPorPagarAPI/CuentasPorPagarAPI/Application/AdjustmentService.cs) | Registra notas de crédito, notas de débito y otros ajustes; exige aplicaciones completas a facturas del mismo proveedor y evita abonos que superen el saldo. |
+| [`PayableQuery.cs`](CuentasPorPagarAPI/CuentasPorPagarAPI/Application/PayableQuery.cs) | Reúne pagos, débitos y créditos aplicados para calcular saldos por factura a una fecha. |
+| [`ReportService.cs`](CuentasPorPagarAPI/CuentasPorPagarAPI/Application/ReportService.cs) | Calcula indicadores, facturas pendientes, balances agrupados por proveedor y estados de cuenta. Incluye facturas, pagos, notas, ajustes y contramovimientos por anulaciones fechadas. |
 | [`AdminSeeder.cs`](CuentasPorPagarAPI/CuentasPorPagarAPI/Application/AdminSeeder.cs) | Crea **solo el primer administrador** si aún no hay usuarios. Lee nombre y contraseña de la configuración y guarda un hash, nunca la contraseña. |
 | [`JwtTokenService.cs`](CuentasPorPagarAPI/CuentasPorPagarAPI/Application/JwtTokenService.cs) | Firma tokens JWT de ocho horas con identificador, usuario, rol y sello de seguridad. |
 | [`ApiException.cs`](CuentasPorPagarAPI/CuentasPorPagarAPI/Application/ApiException.cs) y [`ApiExceptionHandler.cs`](CuentasPorPagarAPI/CuentasPorPagarAPI/Application/ApiExceptionHandler.cs) | Convierten errores de negocio y conflictos de SQL en respuestas `ProblemDetails`; registran errores inesperados y devuelven HTTP 500. |
@@ -119,8 +126,9 @@ Todas las rutas de negocio están bajo `/api/v1`. Salvo `POST /auth/login`, las 
 | [`SuppliersController`](CuentasPorPagarAPI/CuentasPorPagarAPI/Controllers/SuppliersController.cs) | `GET /suppliers`, `GET /suppliers/{id}`, `POST /suppliers`, `PUT /suppliers/{id}`, `PUT /suppliers/{id}/status` | Usuarios autenticados consultan y editan; cambiar el estado requiere Administrador. La lista admite búsqueda, estado y paginación. |
 | [`PaymentMethodsController`](CuentasPorPagarAPI/CuentasPorPagarAPI/Controllers/PaymentMethodsController.cs) | `GET /payment-methods`, `GET /payment-methods/{id}`, `POST /payment-methods`, `PUT /payment-methods/{id}`, `PUT /payment-methods/{id}/status` | Todos los autenticados consultan; solo Administrador crea, edita o cambia estado. |
 | [`InvoicesController`](CuentasPorPagarAPI/CuentasPorPagarAPI/Controllers/InvoicesController.cs) | `GET /invoices`, `GET /invoices/{id}`, `POST /invoices`, `PUT /invoices/{id}`, `POST /invoices/{id}/cancel` | Gestiona facturas y consulta saldos. Todas las operaciones requieren iniciar sesión. |
-| [`PaymentsController`](CuentasPorPagarAPI/CuentasPorPagarAPI/Controllers/PaymentsController.cs) | `GET /payments`, `GET /payments/{id}`, `POST /payments`, `POST /payments/{id}/cancel` | Registra abonos; anular un pago requiere Administrador. |
-| [`ReportsController`](CuentasPorPagarAPI/CuentasPorPagarAPI/Controllers/ReportsController.cs) | `GET /reports/dashboard`, `GET /reports/payables`, `GET /reports/suppliers/{id}/statement`, `GET /reports/suppliers/{id}/statement.csv` | Resumen, pendientes por fecha y estado de cuenta; el último endpoint descarga CSV UTF-8. |
+| [`PaymentsController`](CuentasPorPagarAPI/CuentasPorPagarAPI/Controllers/PaymentsController.cs) | `GET /payments`, `GET /payments/{id}`, `POST /payments`, `POST /payments/{id}/cancel` | Registra abonos y datos de cheque si el método lo requiere; anular un pago requiere Administrador. |
+| [`AdjustmentsController`](CuentasPorPagarAPI/CuentasPorPagarAPI/Controllers/AdjustmentsController.cs) | `GET /adjustments`, `GET /adjustments/{id}`, `POST /adjustments`, `POST /adjustments/{id}/cancel` | Gestiona notas y otros ajustes; la anulación requiere Administrador. |
+| [`ReportsController`](CuentasPorPagarAPI/CuentasPorPagarAPI/Controllers/ReportsController.cs) | `GET /reports/dashboard`, `GET /reports/payables`, `GET /reports/supplier-balances`, `GET /reports/suppliers/{id}/statement`, `GET /reports/suppliers/{id}/statement.csv` | Resumen, pendientes, balance por proveedor y estado de cuenta; el último endpoint descarga CSV UTF-8. |
 
 Ejemplo de flujo para registrar un pago:
 
@@ -191,6 +199,8 @@ El perfil escucha en `https://localhost:7292` y `http://localhost:5296`. HTTP re
 
 Desde la raíz, `dotnet build CuentasPorPagarAPI/CuentasPorPagarAPI.slnx` verifica la compilación. Con PostgreSQL y la API iniciados, `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\smoke-api.ps1` ejecuta el [recorrido integrado](scripts/smoke-api.ps1): inicia sesión, crea proveedor, factura y pago de prueba, comprueba saldos y rechazo de sobrepago, anula los documentos y desactiva el proveedor temporal. **Este script escribe registros en la base local.**
 
+`powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-movements.ps1` comprueba facturas, notas, cheques, saldos por proveedor y anulaciones históricas en una base PostgreSQL **temporal**. Necesita Docker activo y los User Secrets locales del administrador; elimina la base temporal al terminar.
+
 Para agregar una entidad o columna, cambia `Models/` y `PayablesDbContext`, crea una migración en `Migrations/` y aplícala en cada base local. Para agregar una operación HTTP, define sus datos en `Contracts/`, implementa las reglas en `Application/` cuando correspondan y expón la ruta en `Controllers/`.
 
 ## Frontend: estructura y código
@@ -232,7 +242,8 @@ La ruta `/:section` muestra una de estas secciones. El componente lee el paráme
 | `/proveedores` | Busca localmente por nombre o NIT; crea y edita proveedores. Un Administrador puede activarlos o desactivarlos. |
 | `/facturas` | Lista facturas y saldos; el formulario añade o quita conceptos y calcula un total de vista previa. La API calcula el total definitivo. Permite editar o anular conforme a las reglas del backend. |
 | `/pagos` | Carga proveedores, facturas, métodos y pagos. Permite distribuir un pago entre facturas con saldo del mismo proveedor, consultar el detalle y, como Administrador, anularlo. |
-| `/reportes` | Filtra pendientes por fecha, proveedor y vencimiento; consulta el estado de cuenta y descarga su CSV. |
+| `/movimientos` | Registra notas de crédito, notas de débito y otros ajustes; permite consultar aplicaciones y anular documentos como Administrador. |
+| `/reportes` | Filtra pendientes por fecha, muestra el balance agrupado por proveedor, consulta el estado de cuenta y descarga su CSV. |
 | `/configuracion` | Lista métodos de pago. El Administrador puede gestionarlos y crear, activar, desactivar o cambiar la contraseña de usuarios. |
 
 Los formularios usan `[(ngModel)]` para relacionar entradas con el estado TypeScript. La plantilla muestra avisos y deshabilita botones cuando corresponde. Los importes se presentan en **quetzales (GTQ)** mediante `Intl.NumberFormat('es-GT')`; esto afecta solo la presentación, no el cálculo decimal que hace el backend.
