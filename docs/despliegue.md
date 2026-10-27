@@ -41,7 +41,7 @@ La contraseña inicial del administrador de Neon será la configurada en `SeedAd
 ## 3. Desplegar la API en Render Free
 
 1. En [Render](https://dashboard.render.com/) crea un **Blueprint** desde el repositorio público `frederic-morales/FinalDesarrolloWeb`; Render leerá `render.yaml`. El Blueprint define un servicio web Docker con plan `free`, construye `Dockerfile.api` y comprueba `/health/live`. Elige explícitamente el plan gratuito en la pantalla antes de crear el servicio.
-2. Cuando Render solicite `ConnectionStrings__DefaultConnection`, pega la cadena de Neon en formato Npgsql. `Jwt__Key` se genera automáticamente por Render. Conserva el valor fuera del repositorio; cambiarlo invalidará los tokens existentes.
+2. Cuando Render solicite `ConnectionStrings__DefaultConnection`, desde la raíz del repositorio ejecuta `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\copy-neon-connection.ps1` y pega el contenido del portapapeles en ese campo. El script convierte la URI `DATABASE_NEON` de `.env` a formato Npgsql sin mostrarla en pantalla. `Jwt__Key` se genera automáticamente por Render. Conserva el valor fuera del repositorio; cambiarlo invalidará los tokens existentes.
 3. Espera el despliegue y visita `https://NOMBRE.onrender.com/health/live` y `/health/ready`. La segunda ruta debe responder `{"status":"ready"}`. Guarda la URL HTTPS exacta.
 4. Más adelante, después de conocer el dominio de Vercel, añade en **Environment** la variable `Cors__AllowedOrigins__0` con `https://TU_PROYECTO.vercel.app`, sin barra final, y vuelve a desplegar. Para un dominio propio u otra URL de vista previa, agrega `Cors__AllowedOrigins__1`, etc. CORS exige el origen exacto.
 
