@@ -12,7 +12,11 @@ export interface PdfReport {
 }
 
 export async function exportPdf(report: PdfReport, user: string): Promise<void> {
-  const [{ jsPDF }, { default: autoTable }] = await Promise.all([import('jspdf'), import('jspdf-autotable')]);
+  const [{ jsPDF }, autoTableModule] = await Promise.all([import('jspdf'), import('jspdf-autotable')]);
+  // El paquete es CommonJS: según el bundler la función queda en default o en default.default.
+  const mod = autoTableModule as unknown as { default: unknown };
+  const autoTable = (typeof mod.default === 'function' ? mod.default : (mod.default as { default: unknown }).default) as
+    typeof import('jspdf-autotable').default;
   const doc = new jsPDF({ orientation: 'landscape', unit: 'pt', format: 'letter' });
   const width = doc.internal.pageSize.getWidth();
   const height = doc.internal.pageSize.getHeight();

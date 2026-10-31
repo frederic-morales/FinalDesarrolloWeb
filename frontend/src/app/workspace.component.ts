@@ -125,13 +125,18 @@ export class WorkspaceComponent implements OnInit {
     });
   }
 
+  private fail(message: string): void {
+    this.error = message;
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+
   private async run(action: () => Promise<void>, success?: string): Promise<void> {
     this.error = '';
     this.notice = '';
     this.busy = true;
     try { await action(); if (success) this.notice = success; }
     catch (error) {
-      this.error = apiError(error);
+      this.fail(apiError(error));
       if (isUnauthorized(error)) this.auth.logout();
     } finally { this.busy = false; }
   }
@@ -223,12 +228,18 @@ export class WorkspaceComponent implements OnInit {
       .filter(([, amount]) => Number(amount) > 0)
       .map(([invoiceId, amount]) => ({ invoiceId: Number(invoiceId), amount: Number(amount) }));
     const amount = Math.round(this.paymentTotal * 100) / 100;
-    if (!this.paymentForm.supplierId || !this.paymentForm.paymentMethodId || !this.paymentForm.date || allocations.length === 0 ||
-        allocations.some(a => !this.payableInvoices.some(i => i.id === a.invoiceId && a.amount <= i.balance)) || amount <= 0 ||
-        (this.selectedMethod?.requiresCheckDetails &&
-          (!this.paymentForm.check?.bankName.trim() || !this.paymentForm.check?.checkNumber.trim()))) {
-      this.error = 'Selecciona proveedor, método y al menos una factura. Cada abono debe respetar su saldo.'; return;
+    const form = this.paymentForm;
+    if (!form.supplierId) { this.fail('Selecciona un proveedor.'); return; }
+    if (!form.paymentMethodId) { this.fail('Selecciona un método de pago.'); return; }
+    if (!form.date) { this.fail('Indica la fecha del pago.'); return; }
+    if (allocations.length === 0 || amount <= 0) { this.fail('Escribe el abono de al menos una factura.'); return; }
+    if (allocations.some(a => !this.payableInvoices.some(i => i.id === a.invoiceId && a.amount <= i.balance))) {
+      this.fail('Un abono supera el saldo de su factura.'); return;
     }
+    if (this.selectedMethod?.requiresCheckDetails && (!form.check?.bankName.trim() || !form.check?.checkNumber.trim())) {
+      this.fail('Indica el banco y el número del cheque.'); return;
+    }
+    if (form.check && !form.check.clearedOn) form.check.clearedOn = null;
     await this.run(async () => {
       await this.api.post('/payments', { ...this.paymentForm, amount, allocations,
         check: this.selectedMethod?.requiresCheckDetails ? this.paymentForm.check : null });
