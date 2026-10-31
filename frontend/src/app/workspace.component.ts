@@ -3,6 +3,7 @@ import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router, RouterLink, RouterLinkActive } from '@angular/router';
 import { ApiService, apiError } from './api.service';
 import { AuthService, isUnauthorized } from './auth.service';
+import { exportPdf } from './report-pdf';
 import { Adjustment, AdjustmentInput, Allocation, Dashboard, Invoice, InvoiceInput, Payment, PaymentInput, PaymentMethod, Statement, Supplier, SupplierBalance, SupplierInput, User } from './models';
 
 function localDate(date = new Date()): string {
@@ -290,13 +291,56 @@ export class WorkspaceComponent implements OnInit {
     }, 'Movimiento anulado.');
   }
 
+  private appliedFilters = { asOf: '', supplier: 'Todos', overdueOnly: false };
   async loadPayables(): Promise<void> {
+    this.appliedFilters = {
+      asOf: this.reportAsOf,
+      supplier: this.suppliers.find(s => s.id === this.reportSupplierId)?.name ?? 'Todos',
+      overdueOnly: this.reportOverdueOnly
+    };
     [this.payableRows, this.supplierBalances] = await Promise.all([
       this.api.all<Invoice>('/reports/payables', {
         asOf: this.reportAsOf, supplierId: this.reportSupplierId || null, overdueOnly: this.reportOverdueOnly
       }),
       this.api.get<SupplierBalance[]>('/reports/supplier-balances', { asOf: this.reportAsOf })
     ]);
+  }
+  private pdf(report: Parameters<typeof exportPdf>[0]): Promise<void> {
+    return this.run(() => exportPdf(report, this.auth.user()?.userName ?? ''));
+  }
+  async exportPayablesPdf(): Promise<void> {
+    const f = this.appliedFilters;
+    await this.pdf({
+      title: 'Cuentas por pagar', fileName: `cuentas-por-pagar-${f.asOf}.pdf`,
+      filters: [['Fecha de corte', f.asOf], ['Proveedor', f.supplier], ['Solo vencidas', f.overdueOnly ? 'Sí' : 'No']],
+      head: ['Factura', 'Proveedor', 'Vence', 'Factura', 'Débitos', 'Créditos', 'Pagos', 'Saldo'],
+      rows: this.payableRows.map(i => [`${i.series}-${i.number}`, i.supplierName, i.dueDate, this.money(i.total), this.money(i.debit), this.money(i.credit), this.money(i.paid), this.money(i.balance)]),
+      rightColumns: [3, 4, 5, 6, 7],
+      summary: [['Facturas', String(this.payableRows.length)], ['Total pendiente', this.money(this.payableTotal)]]
+    });
+  }
+  async exportBalancesPdf(): Promise<void> {
+    const total = this.supplierBalances.reduce((n, s) => n + s.outstanding, 0);
+    await this.pdf({
+      title: 'Balance por proveedor', fileName: `balance-proveedores-${this.appliedFilters.asOf}.pdf`,
+      filters: [['Fecha de corte', this.appliedFilters.asOf]],
+      head: ['Proveedor', 'Facturas pendientes', 'Vencido', 'Saldo total'],
+      rows: this.supplierBalances.map(s => [s.supplierName, String(s.pendingInvoices), this.money(s.overdue), this.money(s.outstanding)]),
+      rightColumns: [1, 2, 3],
+      summary: [['Saldo total', this.money(total)]]
+    });
+  }
+  async exportStatementPdf(): Promise<void> {
+    const st = this.statement;
+    if (!st) return;
+    await this.pdf({
+      title: 'Estado de cuenta', fileName: `estado-cuenta-${st.supplierId}-${st.from}-${st.to}.pdf`,
+      filters: [['Proveedor', st.supplierName], ['Desde', st.from], ['Hasta', st.to]],
+      head: ['Fecha', 'Tipo', 'Descripción', 'Cargo', 'Abono', 'Saldo'],
+      rows: st.movements.map(m => [m.date, m.type, m.description, this.money(m.charge), this.money(m.credit), this.money(m.runningBalance)]),
+      rightColumns: [3, 4, 5],
+      summary: [['Saldo inicial', this.money(st.openingBalance)], ['Saldo final', this.money(st.closingBalance)]]
+    });
   }
   async searchPayables(): Promise<void> { await this.run(() => this.loadPayables()); }
   async loadStatement(): Promise<void> {
