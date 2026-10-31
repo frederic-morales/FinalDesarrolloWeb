@@ -15,6 +15,7 @@ var builder = WebApplication.CreateBuilder(args.Where(x => !x.Equals("--seed-adm
 builder.Logging.ClearProviders();
 builder.Logging.AddConsole();
 
+builder.Services.AddResponseCompression(o => o.EnableForHttps = true);
 builder.Services.AddControllers();
 builder.Services.AddOpenApi();
 builder.Services.AddProblemDetails();
@@ -118,6 +119,7 @@ builder.Services.AddCors(options => options.AddPolicy("Angular", policy =>
     policy.WithOrigins(allowedOrigins).AllowAnyHeader().AllowAnyMethod()));
 
 var app = builder.Build();
+app.UseResponseCompression();
 app.UseExceptionHandler();
 if (app.Environment.IsDevelopment()) app.MapOpenApi();
 // Render termina TLS antes de enviar la solicitud HTTP al contenedor.

@@ -26,12 +26,13 @@ export class ApiService {
   }
 
   async all<T>(path: string, query?: Record<string, string | number | boolean | null | undefined>): Promise<T[]> {
-    const items: T[] = [];
-    for (let page = 1; ; page++) {
-      const result = await this.get<Page<T>>(path, { ...query, page, pageSize: 100 });
-      items.push(...result.items);
-      if (items.length >= result.total || result.items.length === 0) return items;
-    }
+    const pageSize = 100;
+    const first = await this.get<Page<T>>(path, { ...query, page: 1, pageSize });
+    const pages = Math.ceil(first.total / pageSize);
+    if (pages <= 1) return first.items;
+    const rest = await Promise.all(Array.from({ length: pages - 1 }, (_, i) =>
+      this.get<Page<T>>(path, { ...query, page: i + 2, pageSize })));
+    return first.items.concat(...rest.map(r => r.items));
   }
 
   blob(path: string, query?: Record<string, string | number>): Promise<Blob> {
@@ -52,4 +53,9 @@ export function apiError(error: unknown): string {
     return `La solicitud no se pudo completar (HTTP ${error.status}).`;
   }
   return error instanceof Error ? error.message : 'Ocurrió un error inesperado.';
+}
+
+// Despierta la API (Render Free duerme tras inactividad) mientras el usuario escribe sus credenciales.
+export function wakeApi(): void {
+  try { void fetch(apiBaseUrl.replace(/\/api\/v1\/?$/, '') + '/health/live', { mode: 'no-cors', cache: 'no-store' }); } catch { /* sin efecto */ }
 }
